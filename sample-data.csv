@@ -1,0 +1,6 @@
+percent_B,temperature_C,solvent,ligand,num_peaks,tR_last_peak_min,resolution
+90,40,acetonitrile,C18,3,0.5,0.6
+80,40,acetonitrile,C18,4,1.0,0.7
+70,40,acetonitrile,C18,5,2.0,0.9
+60,40,acetonitrile,C18,6,4.0,1.1
+50,40,acetonitrile,C18,6,8.0,1.2
