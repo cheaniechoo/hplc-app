@@ -10,23 +10,28 @@
 
   <header class="page-header">
     <h1>HPLC method development</h1>
-    <p>Upload one run's LabSolutions CSV export to see where you are in the retention / selectivity flowchart.</p>
+    <p>Upload one or more LabSolutions CSV exports to see where you are in the retention / selectivity flowchart.</p>
     <svg class="trace" viewBox="0 0 500 44" preserveAspectRatio="none" aria-hidden="true">
       <path d="M0 38 L24 38 C34 38 34 26 40 26 C46 26 46 38 56 38 L76 38 C88 38 88 8 95 8 C102 8 102 38 114 38 L131 38 C143 38 143 18 150 18 C157 18 157 38 169 38 L203 38 C217 38 217 4 225 4 C233 4 233 38 247 38 L263 38 C277 38 277 20 285 20 C293 20 293 38 307 38 L338 38 C355 38 355 11 365 11 C375 11 375 38 392 38 L423 38 C443 38 443 25 455 25 C467 25 467 38 487 38 L500 38"/>
     </svg>
   </header>
 
-  <main>
+  <nav class="tab-bar" aria-label="Main sections">
+    <button id="tab-flowchart" class="tab-button active" type="button" aria-controls="panel-flowchart" aria-selected="true">Flowchart</button>
+    <button id="tab-equipment" class="tab-button" type="button" aria-controls="panel-equipment" aria-selected="false">Equipment</button>
+  </nav>
 
-    <!-- Step 1: choose a file -->
+  <main id="panel-flowchart" class="tab-panel" role="tabpanel" aria-labelledby="tab-flowchart">
+
     <section aria-labelledby="upload-heading">
-      <h2 id="upload-heading">Run file</h2>
-      <label for="csv-file">Choose a run's .csv export (one file, one run)</label>
-      <input id="csv-file" type="file" accept=".csv,text/csv">
+      <h2 id="upload-heading">Run files</h2>
+      <label for="csv-file">Choose one or more run .csv exports (one file, one run). You can select several at once.</label>
+      <input id="csv-file" type="file" accept=".csv,text/csv" multiple>
+      <p class="hint">Once the file is loaded and the conditions below look correct, click Calculate at the bottom of the page to see the action.</p>
       <p id="upload-status" role="status"></p>
+      <div id="name-mismatch-alert" class="name-mismatch" hidden role="alert"></div>
     </section>
 
-    <!-- Step 2: specs, entered once and reused for every file -->
     <section aria-labelledby="specs-heading">
       <h2 id="specs-heading">Specification</h2>
       <p class="hint">These numbers come from your method's requirements, not from the file. Set them once.</p>
@@ -37,7 +42,7 @@
         </div>
         <div class="field">
           <label for="spec-tr">tR spec for last peak (min)</label>
-          <input id="spec-tr" type="number" min="0" step="0.1" value="20">
+          <input id="spec-tr" type="number" min="0" step="0.1" value="15">
         </div>
         <div class="field">
           <label for="spec-rs">Resolution (Rs) spec</label>
@@ -48,31 +53,46 @@
           <input id="spec-rs-floor" type="number" min="0" step="0.1" value="1.0">
         </div>
         <div class="field">
-          <label for="spec-min-percent-b">Minimum %B</label>
-          <input id="spec-min-percent-b" type="number" min="0" max="100" step="1" value="5">
+          <label for="spec-min-percent-b">Minimum %B (optional override)</label>
+          <input id="spec-min-percent-b" type="number" min="0" max="100" step="0.1" placeholder="leave blank to let the tool derive it">
+          <p class="hint">Leave blank to let the tool derive this from the log K fit across your runs.</p>
+        </div>
+        <div class="field">
+          <label for="spec-max-pressure">Max system pressure (psi)</label>
+          <input id="spec-max-pressure" type="number" min="0" step="1" value="4000">
         </div>
       </div>
     </section>
 
-    <!-- Step 3: conditions read from the file name / Sample Name, editable in case parsing gets something wrong -->
     <section aria-labelledby="conditions-heading">
       <h2 id="conditions-heading">Run conditions</h2>
-      <p class="hint">Read automatically from the file. Check these against the file name before continuing, and fix anything that's wrong.</p>
+      <p class="hint">Read automatically from the file. Check these against the file name before continuing.</p>
       <div id="conditions-container">
         <p class="empty">No file loaded yet.</p>
       </div>
       <ul id="conditions-warnings" class="warnings"></ul>
     </section>
 
-    <!-- Step 4: the peak table read from the CSV -->
     <section aria-labelledby="peaks-heading">
       <h2 id="peaks-heading">Peak table</h2>
+      <p id="pressure-readout" class="hint"></p>
       <div id="peaks-container" class="table-scroll">
         <p class="empty">No file loaded yet.</p>
       </div>
     </section>
 
-    <!-- Step 5: the recommendation -->
+    <section aria-labelledby="history-heading">
+      <h2 id="history-heading">Run history</h2>
+      <p class="hint">Every run you load is added here. The tool fits a straight line to log K against %B across this history (always excluding the 90% B point) and derives the minimum %B at which the last peak's tR would land on the tR spec. The solvent and temperature of each run are read from its file name, and the tool uses them to work out which selectivity parameter to change next.</p>
+      <div id="history-container" class="table-scroll">
+        <p class="empty">No runs in the history yet.</p>
+      </div>
+      <div class="history-actions">
+        <button id="clear-history-btn" type="button" class="secondary">Clear run history</button>
+      </div>
+      <div id="fit-container"></div>
+    </section>
+
     <section aria-labelledby="result-heading">
       <h2 id="result-heading">Recommendation</h2>
       <button id="calculate-btn" type="button" disabled>Calculate</button>
@@ -81,6 +101,141 @@
 
   </main>
 
+  <main id="panel-equipment" class="tab-panel" role="tabpanel" aria-labelledby="tab-equipment" hidden>
+
+    <section aria-labelledby="equipment-intro-heading">
+      <h2 id="equipment-intro-heading">Equipment</h2>
+      <p class="hint">A reference for the instrument, so a recommendation can be acted on at the bench without a second document. Click a numbered circle on the diagram to see the module's function and the parameters it controls. Click a parameter row in the table below to see what it does.</p>
+
+      <div class="legend" aria-label="Colour convention">
+        <span class="legend-item"><span class="swatch chemical"></span> Chemical parameter — changes the interactions between the compounds and the phases</span>
+        <span class="legend-item"><span class="swatch mechanical"></span> Mechanical parameter — changes how the mobile phase or the column physically behaves</span>
+        <span class="legend-item"><span class="swatch both"></span> Both</span>
+        <span class="legend-item"><span class="swatch detection"></span> Detection setting — does not change the separation</span>
+      </div>
+    </section>
+
+    <section aria-labelledby="instruments-heading">
+      <h2 id="instruments-heading">The instrument</h2>
+      <p class="hint">The numbered diagram of the instrument in the lab. Click a number to see the module it points to.</p>
+
+      <div class="instrument-figure" id="instrument-figure">
+        <div class="instrument-figure-inner">
+          <img id="instrument-image" src="equipment.png" alt="Labelled diagram of the HPLC instrument, with seven numbered modules.">
+          <svg id="instrument-overlay" viewBox="0 0 940 1508" preserveAspectRatio="xMidYMid meet" aria-label="Clickable module hotspots">
+            <g class="hotspot" data-module="solvent" tabindex="0" role="button" aria-label="1: Solvent reservoir">
+              <circle cx="745" cy="75" r="55"></circle>
+            </g>
+            <g class="hotspot" data-module="degasser" tabindex="0" role="button" aria-label="2: Degasser">
+              <circle cx="100" cy="1195" r="55"></circle>
+            </g>
+            <g class="hotspot" data-module="quaternary-valve" tabindex="0" role="button" aria-label="3: Quaternary valve">
+              <circle cx="230" cy="1370" r="55"></circle>
+            </g>
+            <g class="hotspot" data-module="pump" tabindex="0" role="button" aria-label="4: Pump">
+              <circle cx="580" cy="1105" r="55"></circle>
+            </g>
+            <g class="hotspot" data-module="column" tabindex="0" role="button" aria-label="5: Column and oven">
+              <circle cx="775" cy="650" r="55"></circle>
+            </g>
+            <g class="hotspot" data-module="detector" tabindex="0" role="button" aria-label="6: Detector">
+              <circle cx="515" cy="710" r="55"></circle>
+            </g>
+            <g class="hotspot" data-module="waste" tabindex="0" role="button" aria-label="7: Waste">
+              <circle cx="835" cy="1270" r="55"></circle>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <div id="module-detail" class="module-detail" hidden></div>
+    </section>
+
+    <section aria-labelledby="nomogram-heading">
+      <h2 id="nomogram-heading">Solvent nomogram</h2>
+      <p class="hint">Two mobile phases of different solvents have the same strength when their %B values sit on the same row of the nomogram. The table below converts a %B on one solvent to the isoeluotropic %B on another. Values between the published rows are interpolated linearly.</p>
+
+      <div class="converter">
+        <div class="converter-field">
+          <label for="convert-from-solvent">From solvent</label>
+          <select id="convert-from-solvent">
+            <option value="ACN">ACN</option>
+            <option value="MeOH">MeOH</option>
+            <option value="THF">THF</option>
+          </select>
+        </div>
+        <div class="converter-field">
+          <label for="convert-percent-b">%B on the from solvent</label>
+          <input id="convert-percent-b" type="number" min="0" max="100" step="0.1" value="50">
+        </div>
+        <div class="converter-field">
+          <label for="convert-to-solvent">To solvent</label>
+          <select id="convert-to-solvent">
+            <option value="MeOH">MeOH</option>
+            <option value="ACN">ACN</option>
+            <option value="THF">THF</option>
+          </select>
+        </div>
+        <div class="converter-field">
+          <button id="convert-btn" type="button">Convert</button>
+        </div>
+      </div>
+
+      <div id="convert-result" class="convert-result" role="status"></div>
+
+      <details class="nomogram-table">
+        <summary>The nomogram values used by the tool</summary>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th>% ACN (v/v)</th><th>% MeOH (v/v)</th><th>% THF (v/v)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>0.0</td><td>0.0</td><td>0.0</td></tr>
+              <tr><td>10.0</td><td>14.5</td><td>7.3</td></tr>
+              <tr><td>20.0</td><td>27.6</td><td>14.8</td></tr>
+              <tr><td>30.0</td><td>39.0</td><td>22.5</td></tr>
+              <tr><td>37.0</td><td>46.7</td><td>27.8</td></tr>
+              <tr><td>38.5</td><td>48.4</td><td>28.9</td></tr>
+              <tr><td>40.0</td><td>50.0</td><td>30.0</td></tr>
+              <tr><td>50.0</td><td>60.0</td><td>37.3</td></tr>
+              <tr><td>60.0</td><td>70.0</td><td>44.7</td></tr>
+              <tr><td>70.0</td><td>78.4</td><td>51.9</td></tr>
+              <tr><td>80.0</td><td>85.7</td><td>58.8</td></tr>
+              <tr><td>90.0</td><td>92.8</td><td>65.5</td></tr>
+              <tr><td>100.0</td><td>100.0</td><td>72.1</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+
+    <section aria-labelledby="parameters-heading">
+      <h2 id="parameters-heading">Parameters</h2>
+      <p class="hint">Every parameter the user can set, the module that controls it, its usual range, and what it changes in the separation. The category tells you whether it acts on the chemistry (the interactions between the compounds and the phases) or on the mechanics (the flow, the packing, the shape of the bed). Click a row to see the full description of that parameter.</p>
+      <div id="parameters-container" class="table-scroll"></div>
+      <div id="parameter-detail" class="module-detail" hidden></div>
+    </section>
+
+    <section aria-labelledby="responses-heading">
+      <h2 id="responses-heading">Responses</h2>
+      <p class="hint">The quantities that come out of a run, split into what the instrument reads directly on the chromatogram and what is calculated from those readings.</p>
+
+      <h3>Read directly on the chromatogram</h3>
+      <div id="responses-read-container" class="table-scroll"></div>
+
+      <h3>Calculated from the chromatogram</h3>
+      <div id="responses-calculated-container" class="table-scroll"></div>
+    </section>
+
+  </main>
+
+  <div id="image-overlay" class="image-overlay" hidden role="dialog" aria-modal="true" aria-label="Enlarged instrument photo">
+    <button id="image-overlay-close" class="image-overlay-close" type="button" aria-label="Close enlarged photo">&times;</button>
+    <img id="image-overlay-img" src="" alt="">
+  </div>
+
+  <script src="equipment-data.js"></script>
   <script src="logic.js"></script>
   <script src="app.js"></script>
 </body>
