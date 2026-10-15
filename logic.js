@@ -42,6 +42,8 @@ function findPeakTable(lines) {
         plateCount: headerRow.indexOf("Plate #"),
         tailing: headerRow.indexOf("Tailing"),
         resolution: headerRow.indexOf("Resolution"),
+        height: headerRow.indexOf("Height"),
+        area: headerRow.indexOf("Area"),
     };
     const peaks = [];
     let rowIndex = sectionStart + 3;
@@ -55,6 +57,8 @@ function findPeakTable(lines) {
             plateCount: readNumber(row, columnIndex.plateCount),
             tailing: readNumber(row, columnIndex.tailing),
             resolution: readNumber(row, columnIndex.resolution),
+            height: readNumber(row, columnIndex.height),
+            area: readNumber(row, columnIndex.area),
         });
         rowIndex++;
     }
@@ -211,7 +215,7 @@ function parseConditionsFromName(name) {
 const KNOWN_SOLVENTS = ["ACN", "MeOH", "MIX"];
 const KNOWN_MODES = ["ISO", "GRAD"];
 const KNOWN_SAMPLE_TYPES = ["CP", "BLK"];
-const KNOWN_LIGAND_CODES = ["C18aq", "C18n", "C18o", "C18", "C8", "BiPH", "IDB", "PFP"];
+const KNOWN_LIGAND_CODES = ["C18aq", "C18n", "C18o", "C18", "C8", "BiPH", "IBD", "PFP"];
 const KNOWN_PARTICLE_CODES = ["P", "U", "F", "R"];
 function splitLigandAndParticleCode(token) {
     const upperToken = token.toUpperCase();
@@ -229,7 +233,6 @@ function splitLigandAndParticleCode(token) {
 // ============================================================================
 // PART 3: the log K vs %B fit, and the derived Min %B
 // ============================================================================
-const LOGK_EXCLUDED_PERCENT_B = 90;
 const LOGK_R2_IMPROVEMENT_THRESHOLD = 0.99;
 const LOGK_MIN_POINTS = 4;
 function entryToLogKPoint(entry, averageT0) {
@@ -239,6 +242,7 @@ function entryToLogKPoint(entry, averageT0) {
     if (k <= 0) return null;
     return {
         percentB: entry.percentB,
+        fileName: entry.fileName,
         trLastPeak: entry.trLastPeak,
         k: k,
         logK: Math.log10(k),
@@ -271,6 +275,21 @@ function fitLine(points) {
         points: points.slice(),
     };
 }
+// Once a run's decision is no longer "Retention" (retention is exhausted, or the
+// selectivity stage has started), the minimum %B stops being recalculated.
+// Returns the index of the first run in the history that closed retention, or -1.
+function retentionClosedIndex(history) {
+    for (let i = 0; i < history.length; i++) {
+        const r = history[i] && history[i].result;
+        if (!r || typeof r.stage !== "string") continue;
+        if (/^(Retention\s*->|Selectivity|Efficiency|Complete|Pass)/i.test(r.stage)) return i;
+    }
+    return -1;
+}
+// Fits log K against %B using every usable run. If R^2 is below 0.99, the point
+// whose removal improves R^2 the most is dropped, and this repeats until R^2 reaches
+// 0.99 or only LOGK_MIN_POINTS points remain. No %B value is excluded in advance:
+// the high-%B runs usually go because their last peak is not properly separated.
 function fitLogKvsPercentB(history) {
     const t0Values = history
         .map(function (e) { return e.t0; })
@@ -285,15 +304,7 @@ function fitLogKvsPercentB(history) {
         };
     }
     const candidates = [];
-    const excluded = [];
     for (const entry of history) {
-        if (entry.percentB === LOGK_EXCLUDED_PERCENT_B) {
-            excluded.push({
-                percentB: entry.percentB,
-                reason: "90% B is always excluded: at 90% B the peaks are not separated, so the last peak's tR is estimated rather than measured.",
-            });
-            continue;
-        }
         const point = entryToLogKPoint(entry, averageT0);
         if (point) candidates.push(point);
     }
@@ -301,62 +312,91 @@ function fitLogKvsPercentB(history) {
         return {
             sufficientData: false,
             averageT0: averageT0,
+            allPoints: candidates,
             pointsUsed: candidates,
-            excluded: excluded,
+            excluded: [],
             reason: "Only " + candidates.length + " run(s) with a usable log K point. At least " + LOGK_MIN_POINTS + " are needed to fit the line.",
         };
     }
-    const firstFit = fitLine(candidates);
-    let droppedPoint = null;
-    let finalFit = firstFit;
-    if (firstFit && firstFit.rSquared < LOGK_R2_IMPROVEMENT_THRESHOLD && candidates.length > LOGK_MIN_POINTS) {
-        let bestDrop = null;
-        let bestR2 = firstFit.rSquared;
-        for (let i = 0; i < candidates.length; i++) {
-            const subset = candidates.slice(0, i).concat(candidates.slice(i + 1));
-            const trial = fitLine(subset);
-            if (trial && trial.rSquared > bestR2) {
-                bestR2 = trial.rSquared;
-                bestDrop = { index: i, fit: trial, point: candidates[i] };
-            }
+    let kept = candidates.slice();
+    let fit = fitLine(kept);
+    const firstFit = fit;
+    const excluded = [];
+    if (fit && fit.rSquared < LOGK_R2_IMPROVEMENT_THRESHOLD) {
+        // Try leaving out 1 point, then 2, then 3 ... and take the smallest number of
+        // dropped points that brings R^2 up to the threshold (best R^2 if several do).
+        // If none reaches it, keep the combination with the best R^2 found.
+        const n = candidates.length, maxDrop = Math.min(n - LOGK_MIN_POINTS, 4);
+        let best = null;
+        const combos = function (start, left, chosen, visit) {
+            if (left === 0) { visit(chosen); return; }
+            for (let i = start; i <= n - left; i++) { chosen.push(i); combos(i + 1, left - 1, chosen, visit); chosen.pop(); }
+        };
+        for (let d = 1; d <= maxDrop; d++) {
+            let bestAtD = null;
+            combos(0, d, [], function (drop) {
+                const subset = candidates.filter(function (_, i) { return drop.indexOf(i) === -1; });
+                const trial = fitLine(subset);
+                if (trial && (!bestAtD || trial.rSquared > bestAtD.fit.rSquared)) bestAtD = { drop: drop.slice(), subset: subset, fit: trial };
+            });
+            if (bestAtD && (!best || bestAtD.fit.rSquared > best.fit.rSquared)) best = bestAtD;
+            if (bestAtD && bestAtD.fit.rSquared >= LOGK_R2_IMPROVEMENT_THRESHOLD) { best = bestAtD; break; }
         }
-        if (bestDrop) {
-            droppedPoint = bestDrop.point;
-            finalFit = bestDrop.fit;
+        if (best && best.fit.rSquared > fit.rSquared) {
+            best.drop.forEach(function (i) {
+                const point = candidates[i];
+                excluded.push({
+                    percentB: point.percentB,
+                    fileName: point.fileName,
+                    logK: point.logK,
+                    trLastPeak: point.trLastPeak,
+                    r2Before: firstFit.rSquared,
+                    r2After: best.fit.rSquared,
+                    reason: point.percentB + "% B was left out so that R\u00b2 reaches " + LOGK_R2_IMPROVEMENT_THRESHOLD + " (R\u00b2 " + firstFit.rSquared.toFixed(4) + " with every run, " + best.fit.rSquared.toFixed(4) + " without " + (best.drop.length > 1 ? "these " + best.drop.length + " runs" : "it") + "). A run at high %B often has a last peak that is not properly separated, so its tR is not a clean measurement.",
+                });
+            });
+            excluded.sort(function (x, y) { return y.percentB - x.percentB; });
+            kept = best.subset;
+            fit = best.fit;
         }
     }
     return {
         sufficientData: true,
         averageT0: averageT0,
-        pointsUsed: finalFit.points,
+        allPoints: candidates,
+        pointsUsed: kept,
         excluded: excluded,
-        droppedPoint: droppedPoint,
-        slope: finalFit.slope,
-        intercept: finalFit.intercept,
-        rSquared: finalFit.rSquared,
+        slope: fit.slope,
+        intercept: fit.intercept,
+        rSquared: fit.rSquared,
         firstFitRSquared: firstFit.rSquared,
-        equation: "log K = " + finalFit.slope.toFixed(5) + " x %B + " + finalFit.intercept.toFixed(5),
+        belowThreshold: fit.rSquared < LOGK_R2_IMPROVEMENT_THRESHOLD,
+        equation: "log K = " + fit.slope.toFixed(5) + " x %B + " + fit.intercept.toFixed(5),
     };
 }
 function computeMinPercentB(history, tRSpec) {
-    const fit = fitLogKvsPercentB(history);
+    const closedAt = retentionClosedIndex(history);
+    const scope = closedAt === -1 ? history : history.slice(0, closedAt + 1);
+    const frozen = closedAt !== -1;
+    const frozenInfo = frozen ? { frozen: true, frozenAtFile: history[closedAt].fileName, frozenAtStage: history[closedAt].result.stage, runsInScope: scope.length } : { frozen: false };
+    const fit = fitLogKvsPercentB(scope);
     if (!fit.sufficientData) {
-        return { sufficientData: false, fit: fit, reason: fit.reason };
+        return Object.assign({ sufficientData: false, fit: fit, reason: fit.reason }, frozenInfo);
     }
     if (!tRSpec || tRSpec <= 0) {
-        return { sufficientData: false, fit: fit, reason: "The tR spec is not set, so the min %B cannot be computed." };
+        return Object.assign({ sufficientData: false, fit: fit, reason: "The tR spec is not set, so the min %B cannot be computed." }, frozenInfo);
     }
     const t0 = fit.averageT0;
     const targetK = (tRSpec - t0) / t0;
     if (targetK <= 0) {
-        return { sufficientData: false, fit: fit, reason: "The tR spec is at or below t0, so no positive K can put the last peak on spec." };
+        return Object.assign({ sufficientData: false, fit: fit, reason: "The tR spec is at or below t0, so no positive K can put the last peak on spec." }, frozenInfo);
     }
     const targetLogK = Math.log10(targetK);
     if (fit.slope === 0) {
-        return { sufficientData: false, fit: fit, reason: "The fitted line has zero slope, so the min %B cannot be solved." };
+        return Object.assign({ sufficientData: false, fit: fit, reason: "The fitted line has zero slope, so the min %B cannot be solved." }, frozenInfo);
     }
     const minPercentB = (targetLogK - fit.intercept) / fit.slope;
-    return {
+    return Object.assign({
         sufficientData: true,
         fit: fit,
         averageT0: t0,
@@ -365,8 +405,73 @@ function computeMinPercentB(history, tRSpec) {
         targetLogK: targetLogK,
         minPercentB: minPercentB,
         roundedMinPercentB: roundPercentB(minPercentB),
-    };
+    }, frozenInfo);
 }
+
+// ============================================================================
+// All-peaks log K vs %B: one line per peak, and the %B where the closest pair
+// of lines is furthest apart (the best intermediate %B).
+// ============================================================================
+function peakTimesOfEntry(e) {
+    if (e && Array.isArray(e.peakTimes)) return e.peakTimes;
+    if (e && e.chrom && Array.isArray(e.chrom.peaks)) {
+        return e.chrom.peaks.map(function (p) { return p.rTime; }).filter(function (v) { return typeof v === "number"; });
+    }
+    return [];
+}
+function allPeaksKey(e) {
+    return [normaliseSolvent(e.solvent) || "", normaliseLigand(e.ligand) || "", normaliseTemperature(e.temperature) || ""].join("|");
+}
+// Peaks are matched between runs by elution order, so only runs where every
+// peak is found (peak count equal to the target) are used. Runs must share
+// solvent, ligand and temperature with the latest such run.
+function buildAllPeaksFit(history, targetPeaks, tRSpec, minPercentBHint) {
+    const t0Values = history.map(function (e) { return e.t0; }).filter(function (v) { return typeof v === "number" && v > 0; });
+    if (!t0Values.length) return { ok: false, reason: "No run has a t0 value yet, so K cannot be worked out." };
+    const t0 = t0Values.reduce(function (a, b) { return a + b; }, 0) / t0Values.length;
+    const full = history.filter(function (e) {
+        return typeof e.percentB === "number" && e.numPeaks === targetPeaks && peakTimesOfEntry(e).length === targetPeaks;
+    });
+    if (!full.length) return { ok: false, reason: "No run has all " + targetPeaks + " peaks yet. The lines can only be drawn from runs where every peak is found, because peaks are matched between runs by their order." };
+    const key = allPeaksKey(full[full.length - 1]);
+    const runs = full.filter(function (e) { return allPeaksKey(e) === key; });
+    const distinct = new Set(runs.map(function (e) { return e.percentB; }));
+    if (distinct.size < 2) return { ok: false, reason: "Only one %B has all " + targetPeaks + " peaks so far (" + runs[0].percentB + "% B). Two different %B values are enough to draw the lines; three to five are more precise." };
+
+    const lines = [], skipped = [];
+    for (let i = 0; i < targetPeaks; i++) {
+        const pts = [];
+        let usable = true;
+        for (const r of runs) {
+            const k = (peakTimesOfEntry(r)[i] - t0) / t0;
+            if (!(k > 0)) { usable = false; break; }
+            pts.push({ percentB: r.percentB, logK: Math.log10(k), fileName: r.fileName });
+        }
+        if (!usable) { skipped.push(i + 1); continue; }
+        const fit = fitLine(pts);
+        if (!fit) continue;
+        lines.push({ peak: i + 1, slope: fit.slope, intercept: fit.intercept, rSquared: fit.rSquared, points: pts });
+    }
+    if (lines.length < 2) return { ok: false, reason: "Fewer than two peaks have a retention time above t0, so there are not enough lines to compare." };
+
+    const bs = runs.map(function (r) { return r.percentB; });
+    let hi = Math.max.apply(null, bs), lo = Math.min.apply(null, bs);
+    if (typeof minPercentBHint === "number" && Number.isFinite(minPercentBHint) && minPercentBHint < hi) lo = Math.min(lo, Math.max(0, minPercentBHint));
+    let best = null;
+    for (let b = Math.ceil(lo * 2) / 2; b <= hi + 1e-9; b += 0.5) {
+        const vals = lines.map(function (l) { return { peak: l.peak, v: l.slope * b + l.intercept }; }).sort(function (a, c) { return a.v - c.v; });
+        const lastTr = t0 * (1 + Math.pow(10, vals[vals.length - 1].v));
+        if (tRSpec && lastTr > tRSpec) continue;
+        let gap = Infinity, pair = null;
+        for (let j = 1; j < vals.length; j++) {
+            const g = vals[j].v - vals[j - 1].v;
+            if (g < gap) { gap = g; pair = [vals[j - 1].peak, vals[j].peak]; }
+        }
+        if (best === null || gap >= best.minGap - 1e-12) best = { percentB: roundPercentB(b), minGap: gap, alpha: Math.pow(10, gap), pair: pair, lastTr: lastTr };
+    }
+    return { ok: true, t0: t0, t0Runs: t0Values.length, key: key, runs: runs, lines: lines, skipped: skipped, lo: lo, hi: hi, suggestion: best, tRSpec: tRSpec };
+}
+
 // ============================================================================
 // PART 3b: temperature-based tR prediction, and resolution observations
 // ============================================================================
@@ -578,6 +683,16 @@ function checkBackPressure(maxBackPressure, pressureLimit) {
         message: "Peak back pressure was " + maxBackPressure.maxActual.toFixed(1) + " " + maxBackPressure.units + ", within the system limit of " + pressureLimit + " " + maxBackPressure.units + ".",
     };
 }
+// Resolution as it should be shown. With fewer peaks than the target some
+// peaks are still co-eluting, so the run's Rs is 0 and the calculated value is
+// shown only as a note.
+function displayResolution(summary, targetPeaks) {
+    const raw = summary && typeof summary.minResolution === "number" ? summary.minResolution : null;
+    const numPeaks = summary ? summary.numPeaks : null;
+    const forcedZero = numPeaks !== null && numPeaks !== undefined && targetPeaks !== null && targetPeaks !== undefined && numPeaks < targetPeaks;
+    if (forcedZero) return { shown: 0, calculated: raw !== null && raw !== 0 ? raw : null, forcedZero: true };
+    return { shown: raw, calculated: null, forcedZero: false };
+}
 function classifyRetentionTime(trLastPeak, tRSpec) {
     if (trLastPeak <= tRSpec / 2) return "<<";
     if (trLastPeak < tRSpec) return "<";
@@ -613,6 +728,43 @@ function buildOption(currentTr, currentPercentB, targetPercentB, label) {
         predictedTr: predictedTr,
         predictedTR: predictedTr,
     };
+}
+// Every %B decrement that is admissible from the current run: stepping down
+// in 10-point steps, not below Min %B, with the predicted last-peak tR at or
+// under the tR spec. The first row (-10) is the primary decision. At most
+// three 10-point steps are listed, plus Min %B if it is admissible and not
+// already one of them.
+function admissibleDecrements(currentTr, currentPercentB, tRSpec, minPercentB) {
+    const rows = [];
+    const pct = function (v) { return Math.round(v * 10) / 10; };
+    const usePercent = function (predicted) { return Math.round(predicted / tRSpec * 100); };
+    for (let k = 1; k <= 3; k++) {
+        const target = pct(currentPercentB - 10 * k);
+        if (target < minPercentB) break;
+        const predicted = predictTrAtPercentB(currentTr, currentPercentB, target);
+        if (predicted === null || predicted > tRSpec) break;
+        const option = buildOption(currentTr, currentPercentB, target, "-" + (10 * k) + " points");
+        option.primary = (k === 1);
+        option.runsSaved = k - 1;
+        option.usesPercentOfSpec = usePercent(predicted);
+        option.grounds = k === 1
+            ? "Primary decision: the standard 10-point step. Uses " + option.usesPercentOfSpec + "% of the tR spec."
+            : "Skips " + (k - 1) + " run" + (k - 1 > 1 ? "s" : "") + " if it works. Uses " + option.usesPercentOfSpec + "% of the tR spec" + (option.usesPercentOfSpec >= 85 ? ", little headroom." : ".");
+        rows.push(option);
+    }
+    const last = rows.length ? rows[rows.length - 1].percentB : null;
+    const minRounded = pct(minPercentB);
+    if (minPercentB < currentPercentB && (last === null || minRounded < last)) {
+        const predicted = predictTrAtPercentB(currentTr, currentPercentB, minRounded);
+        if (predicted !== null && predicted <= tRSpec) {
+            const option = buildOption(currentTr, currentPercentB, minRounded, "Min %B");
+            option.primary = false;
+            option.usesPercentOfSpec = usePercent(predicted);
+            option.grounds = "Lowest %B allowed. Most retention gained. Uses " + option.usesPercentOfSpec + "% of the tR spec.";
+            rows.push(option);
+        }
+    }
+    return rows;
 }
 function centralCheck(trClass, rClass) {
     const table = {
@@ -735,10 +887,10 @@ function isAtOrBeyondTopOfLadder(temperature) {
     if (index === -1) return true;
     return index >= TEMPERATURE_LADDER.length - 1;
 }
-function buildSolventRemainingPath(currentSolvent) {
-    const steps = [
-        "Observe (compare 40 and 60, pick another if worthwhile)",
-    ];
+function buildSolventRemainingPath(currentSolvent, includeTemp60, skipObserve) {
+    const steps = [];
+    if (includeTemp60) steps.push("Change the temperature to 60 deg C and run again" + (currentSolvent ? " on " + currentSolvent : ""));
+    if (!skipObserve) steps.push("Observe (compare 40 and 60, pick another if worthwhile)");
     if (currentSolvent === "ACN") {
         steps.push("solvent 2 (MeOH) at the isoeluotropic %B, at " + SOLVENT_TEMPERATURES_LABEL);
         steps.push("mix at the isoeluotropic %B, at " + SOLVENT_TEMPERATURES_LABEL);
@@ -834,7 +986,7 @@ function nextSelectivityStep(history, summary, specs, reason, options) {
                 message: "Next selectivity step: change the temperature to 40 deg C and run again on " + currentSolvent + ".",
                 reasoning: "Temperature is the first selectivity parameter on the flowchart. It changes retention and selectivity through the chemical interaction between the compounds and the stationary phase, and it is the fastest parameter to change (only the oven is involved).",
                 temperaturePrediction: prediction,
-                remainingPath: buildSolventRemainingPath(currentSolvent),
+                remainingPath: buildSolventRemainingPath(currentSolvent, true),
             };
         }
         if (needsConfirmation) {
@@ -855,7 +1007,7 @@ function nextSelectivityStep(history, summary, specs, reason, options) {
                 step: "temperature-60",
                 parameter: "temperature",
                 value: "60",
-                action: "Change the temperature to 60 deg C and run again.",
+                action: "Change the temperature to 60 deg C and run again" + (currentSolvent ? " on " + currentSolvent : "") + ".",
                 message: "40 deg C is recorded on " + currentSolvent + ". Next selectivity step: change the temperature to 60 deg C and run again.",
                 reasoning: "60 deg C is the second temperature on the flowchart. Running at two temperatures lets the user see whether the separation responds to temperature at all, which the Observe step then interprets.",
                 temperaturePrediction: prediction,
@@ -874,7 +1026,7 @@ function nextSelectivityStep(history, summary, specs, reason, options) {
                 action: "Observe: compare the 40 and 60 deg C chromatograms.",
                 message: "40 deg C and 60 deg C are both recorded on " + currentSolvent + ". This is the Observe step: compare the 40 and 60 deg C chromatograms, and if another temperature is worth trying, pick one and run it. If not, move on to the solvent change.",
                 reasoning: "The flowchart marks this step as a human judgement call. The tool does not choose the next temperature; it surfaces the observation so the user decides whether another temperature is worth the run, or whether the solvent change should come next.",
-                remainingPath: buildSolventRemainingPath(currentSolvent),
+                remainingPath: buildSolventRemainingPath(currentSolvent, false, true),
             };
         }
     }
@@ -962,15 +1114,22 @@ function decide(summary, specs, history, options) {
     const userChoseSolventChange = opts.userChoseSolventChange === true;
     if (summary.numPeaks === null || summary.numPeaks === 0) {
         return {
-            stage: "Error",
-            action: "No recommendation can be made.",
-            message: "No peaks were found in this file's peak table.",
+            stage: "No peaks",
+            pass: false,
+            action: "Check the injection and the detector wavelength, then run again at the same conditions.",
+            message: "No peaks were found in this file's peak table, so retention cannot be judged. Confirm that the sample was injected and that the wavelength suits the compounds, then repeat this run.",
         };
     }
     if (summary.numPeaks < specs.targetPeaks) {
         const currentPercentB = specs.currentPercentB;
         const currentTr = summary.trLastPeak;
-        const atMinimum = currentPercentB === null || currentPercentB <= specs.minPercentB;
+        // A run at 40 or 60 deg C, or on MeOH or the mixed solvent, is a selectivity run by definition:
+        // those conditions are only explored once retention is finished. So retention counts as closed
+        // for it, whatever the history holds (this keeps the answer the same in any upload order).
+        const runTemp = conditions ? normaliseTemperature(conditions.temperature) : null;
+        const runSolvent = conditions ? normaliseSolvent(conditions.solvent) : null;
+        const selectivityRun = (runTemp !== null && runTemp !== "amb" && Number(runTemp) > 30) || (runSolvent !== null && runSolvent !== "ACN");
+        const atMinimum = currentPercentB === null || currentPercentB <= specs.minPercentB || selectivityRun;
         if (currentTr === null) {
             if (atMinimum) {
                 return {
@@ -995,11 +1154,25 @@ function decide(summary, specs, history, options) {
         }
         const trClass = classifyRetentionTime(currentTr, specs.tRSpec);
         if (trClass === ">") {
+            let previousPercentB = null;
+            for (const e of (history || [])) {
+                if (e && typeof e.percentB === "number" && currentPercentB !== null && e.percentB > currentPercentB) {
+                    const sameSolvent = !e.solvent || !conditions || !conditions.solvent || normaliseSolvent(e.solvent) === normaliseSolvent(conditions.solvent);
+                    if (sameSolvent && (previousPercentB === null || e.percentB < previousPercentB)) previousPercentB = e.percentB;
+                }
+            }
+            let previousEstimated = false;
+            if (previousPercentB === null && currentPercentB !== null) {
+                previousPercentB = currentPercentB;
+                previousEstimated = true;
+            }
             return {
                 stage: "Retention -> Selectivity",
                 pass: false,
+                previousPercentB: previousPercentB,
+                previousPercentBEstimated: previousEstimated,
                 action: "Return %B to its previous value, then move on to the Selectivity stage.",
-                message: "Found " + summary.numPeaks + " of the required " + specs.targetPeaks + " peaks, but the last peak's tR (" + currentTr.toFixed(2) + " min) is already over the tR spec of " + specs.tRSpec + " min. Decrementing %B further would only push tR higher." + (currentPercentB !== null ? " The current %B is " + currentPercentB + "%." : ""),
+                message: "Found " + summary.numPeaks + " of the required " + specs.targetPeaks + " peaks, but the last peak's tR (" + currentTr.toFixed(2) + " min) is already over the tR spec of " + specs.tRSpec + " min. Decrementing %B further would only push tR higher." + (currentPercentB !== null ? " The current %B is " + currentPercentB + "%." : "") + (previousEstimated ? " The earlier run is not in the history, so the next run keeps the %B of this run (" + previousPercentB + "%)." : ""),
                 selectivity: nextSelectivityStep(history, summary, specs, "peak-count", {
                     currentConditions: conditions,
                     userConfirmedEarlierTemperatures: opts.userConfirmedEarlierTemperatures,
@@ -1021,11 +1194,13 @@ function decide(summary, specs, history, options) {
             };
         }
         if (trClass === "<") {
-            const intermediatePercentB = (currentPercentB + specs.minPercentB) / 2;
-            const optionsList = [
-                buildOption(currentTr, currentPercentB, specs.minPercentB, "Min %B (" + specs.minPercentB + "%)"),
-                buildOption(currentTr, currentPercentB, intermediatePercentB, "Intermediate %B (" + roundPercentB(intermediatePercentB) + "%)"),
-            ];
+            const fromGraph = typeof opts.intermediatePercentB === "number" && opts.intermediatePercentB < currentPercentB && opts.intermediatePercentB > specs.minPercentB;
+            const intermediatePercentB = fromGraph ? opts.intermediatePercentB : (currentPercentB + specs.minPercentB) / 2;
+            const interOption = buildOption(currentTr, currentPercentB, intermediatePercentB, "Intermediate %B (" + roundPercentB(intermediatePercentB) + "%)");
+            interOption.grounds = fromGraph ? "From the all-peaks graph: the closest pair of peaks is furthest apart here." : "Midpoint between the current %B and Min %B. The all-peaks graph needs two runs with every peak found.";
+            const minOption = buildOption(currentTr, currentPercentB, specs.minPercentB, "Min %B (" + specs.minPercentB + "%)");
+            minOption.grounds = "Lowest %B allowed: the most retention.";
+            const optionsList = [minOption, interOption];
             let message = "Found " + summary.numPeaks + " of the required " + specs.targetPeaks + " peaks, and the last peak's tR (" + currentTr.toFixed(2) + " min) is approaching the tR spec of " + specs.tRSpec + " min. A further 10-point decrement would overshoot spec, so run both of these and compare:";
             for (const option of optionsList) {
                 message += "\n - " + option.label + " - expect the last peak near " + (option.predictedTr === null ? "n/a" : option.predictedTr.toFixed(2) + " min") + ".";
@@ -1036,6 +1211,28 @@ function decide(summary, specs, history, options) {
                 action: "Run Min %B and Intermediate %B, then compare.",
                 message: message,
                 options: optionsList,
+            };
+        }
+        const decrements = admissibleDecrements(currentTr, currentPercentB, specs.tRSpec, specs.minPercentB);
+        if (decrements.length > 1) {
+            const first = decrements[0];
+            let multi = "Found " + summary.numPeaks + " of the required " + specs.targetPeaks + " peaks at " + currentPercentB + "% B. The last peak's tR is " + currentTr.toFixed(2) + " min against a spec of " + specs.tRSpec + " min, so more than one decrement fits inside spec. The -10 point step is the primary decision; the others are listed so you can choose.";
+            return {
+                stage: "Retention",
+                pass: false,
+                action: "Drop to " + first.percentB + "% B and run again.",
+                message: multi,
+                options: decrements,
+                optionsAreDecrements: true,
+            };
+        }
+        if (decrements.length === 1 && decrements[0].primary === false) {
+            const only = decrements[0];
+            return {
+                stage: "Retention",
+                pass: false,
+                action: "Drop to " + only.percentB + "% B (Min %B) and run again.",
+                message: "Found " + summary.numPeaks + " of the required " + specs.targetPeaks + " peaks at " + currentPercentB + "% B. A full 10-point step would go below Min %B (" + specs.minPercentB + "%), so the next run is at Min %B. Expect the last peak near " + only.predictedTr.toFixed(2) + " min.",
             };
         }
         const nextPercentB = roundPercentB(currentPercentB - 10);

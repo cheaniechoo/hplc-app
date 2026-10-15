@@ -7,9 +7,10 @@
 // what that category means for it, the module that controls it, its usual
 // range, and its effect on retention, selectivity or efficiency.
 //
-// The ranges below come from the Shimadzu Prominence series specification
-// sheets (the modules in this lab) and from the Restek Pinnacle DB C18
-// datasheet.
+// Instrument ranges come from the Shimadzu Prominence series specification
+// sheets (the modules in this lab). Column ranges come from the Restek product
+// pages for the Pinnacle DB, Ultra, Force and Raptor lines; where a page does
+// not state a value it is not given here.
 
 // Short explanations of what each category means, used by the parameter
 // detail panel when a row is clicked.
@@ -124,9 +125,9 @@ const EQUIPMENT_PARAMETERS = [
     name: "Solvent pH",
     category: "chemical",
     module: "solvent bottles",
-    range: "2.5 to 8 (limited by the column)",
+    range: "2.0 to 8",
     effect: "retention and selectivity",
-    note: "Only matters if the compounds are ionisable. A neutral compound is unaffected.",
+    note: "Only matters if the compounds are ionisable. A neutral compound is unaffected. Restek: Pinnacle DB and Ultra 2.5 to 8, Force and Raptor 2.0 to 8, so use 2.5 to 8 on the first two.",
   },
   {
     name: "%B",
@@ -180,7 +181,7 @@ const EQUIPMENT_PARAMETERS = [
     name: "Ligand",
     category: "chemical",
     module: "column",
-    range: "C18, C8, C18aq, BiPH, IDB, PFP",
+    range: "C18, C8, C18aq, BiPH, IBD, PFP",
     effect: "selectivity",
     note: "The ligand is what the compounds interact with in the stationary phase. Changing it is the most disruptive selectivity change.",
   },
@@ -188,49 +189,49 @@ const EQUIPMENT_PARAMETERS = [
     name: "Carbon load",
     category: "chemical",
     module: "column",
-    range: "11%",
+    range: "3 to 20%",
     effect: "retention and selectivity",
-    note: "A higher carbon load means a more hydrophobic stationary phase.",
+    note: "A higher carbon load means a more hydrophobic stationary phase. Restek: Pinnacle DB 6 to 11%, Ultra 11 to 20%, Force 15 to 20%, Raptor 3 to 5%.",
   },
   {
     name: "Particle size",
     category: "mechanical",
     module: "column",
-    range: "5 µm",
+    range: "1.8, 1.9, 2.7, 3, 5 µm",
     effect: "efficiency",
-    note: "Smaller particles give more plates per metre, so narrower peaks, but higher back pressure.",
+    note: "Smaller particles give more plates per metre, so narrower peaks, but higher back pressure. Restek: Pinnacle DB 1.9, 3, 5 µm; Ultra 3, 5; Force 1.8, 3, 5; Raptor 1.8, 2.7, 5. Maximum pressure for Force and Raptor: 5 µm 400 bar (5800 psi), 3 µm 600 bar (8700 psi), 1.8 µm 1034 bar (15,000 psi).",
   },
   {
     name: "Pore size",
     category: "mechanical",
     module: "column",
-    range: "140 Å",
+    range: "90, 100, 140 Å",
     effect: "retention",
-    note: "Determines which compounds can enter the pores of the bead.",
+    note: "Determines which compounds can enter the pores of the bead. Restek: Pinnacle DB 140 Å, Ultra 100 Å, Force 100 Å, Raptor 90 Å.",
   },
   {
     name: "Column length",
     category: "mechanical",
     module: "column",
-    range: "150 mm",
+    range: "30, 50, 100, 150, 250 mm",
     effect: "efficiency",
-    note: "A longer column gives more plates but a longer run and higher back pressure.",
+    note: "A longer column gives more plates but a longer run and higher back pressure. Restek's page for the lab column lists only 150 mm; the other lengths are the sizes offered in Build a column.",
   },
   {
     name: "Column internal diameter",
     category: "mechanical",
     module: "column",
-    range: "4.6 mm",
+    range: "2.1, 3.2, 4.6 mm",
     effect: "efficiency",
-    note: "Affects the linear velocity for a given flow rate.",
+    note: "Affects the linear velocity for a given flow rate. Restek's page for the lab column lists only 4.6 mm; the other diameters are the sizes offered in Build a column.",
   },
   {
     name: "Temperature",
     category: "chemical",
     module: "column",
-    range: "4 to 85 °C (limited by the column to 80 °C)",
+    range: "4 to 80 °C (column limit)",
     effect: "retention and selectivity",
-    note: "Higher temperature lowers retention and can change selectivity, but the direction of the change is not predictable in advance.",
+    note: "Higher temperature lowers retention and can change selectivity, but the direction of the change is not predictable in advance. Restek limits all four column lines to 80 °C; the oven itself goes to 85 °C.",
   },
   {
     name: "Wavelength",

@@ -9,30 +9,35 @@
 <body>
 
   <header class="page-header">
-    <h1>HPLC method development</h1>
-    <p>Upload one or more LabSolutions CSV exports to see where you are in the retention / selectivity flowchart.</p>
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 34 L16 34 C20 34 20 16 24 16 C28 16 28 34 32 34 L42 34" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </span>
+      <div>
+        <h1>HPLC method development assistant</h1>
+        <p>Upload LabSolutions CSV exports and see where each run sits in the retention and selectivity flowchart, with a recommendation for the next run.</p>
+      </div>
+    </div>
+    <div class="header-meta">
+      <span>BPS2032 &middot; Monash University</span>
+      <strong>Eliza Ear &middot; 34485767</strong>
+    </div>
     <svg class="trace" viewBox="0 0 500 44" preserveAspectRatio="none" aria-hidden="true">
       <path d="M0 38 L24 38 C34 38 34 26 40 26 C46 26 46 38 56 38 L76 38 C88 38 88 8 95 8 C102 8 102 38 114 38 L131 38 C143 38 143 18 150 18 C157 18 157 38 169 38 L203 38 C217 38 217 4 225 4 C233 4 233 38 247 38 L263 38 C277 38 277 20 285 20 C293 20 293 38 307 38 L338 38 C355 38 355 11 365 11 C375 11 375 38 392 38 L423 38 C443 38 443 25 455 25 C467 25 467 38 487 38 L500 38"/>
     </svg>
   </header>
 
   <nav class="tab-bar" aria-label="Main sections">
-    <button id="tab-flowchart" class="tab-button active" type="button" aria-controls="panel-flowchart" aria-selected="true">Flowchart</button>
-    <button id="tab-equipment" class="tab-button" type="button" aria-controls="panel-equipment" aria-selected="false">Equipment</button>
+    <div class="nav-group" data-group="flowchart"><button id="tab-flowchart" class="tab-button active" type="button" aria-controls="panel-flowchart" aria-selected="true">Dashboard</button></div>
+    <div class="nav-group" data-group="history"><button id="tab-history" class="tab-button" type="button" aria-controls="panel-history" aria-selected="false">Run history</button></div>
+    <div class="nav-group" data-group="equipment"><button id="tab-equipment" class="tab-button" type="button" aria-controls="panel-equipment" aria-selected="false">Equipment</button></div>
+    <div class="nav-group" data-group="naming"><button id="tab-naming" class="tab-button" type="button" aria-controls="panel-naming" aria-selected="false">Naming guide</button></div>
   </nav>
 
   <main id="panel-flowchart" class="tab-panel" role="tabpanel" aria-labelledby="tab-flowchart">
+    <nav class="sub-bar" aria-label="Dashboard steps"><button type="button" class="sub-button" data-sub="spec">1  Specification</button><button type="button" class="sub-button" data-sub="upload">2  Upload and conditions</button><button type="button" class="sub-button" data-sub="peaks">3  Peak table</button><button type="button" class="sub-button" data-sub="result">4  Recommendation</button></nav>
 
-    <section aria-labelledby="upload-heading">
-      <h2 id="upload-heading">Run files</h2>
-      <label for="csv-file">Choose one or more run .csv exports (one file, one run). You can select several at once.</label>
-      <input id="csv-file" type="file" accept=".csv,text/csv" multiple>
-      <p class="hint">Once the file is loaded and the conditions below look correct, click Calculate at the bottom of the page to see the action.</p>
-      <p id="upload-status" role="status"></p>
-      <div id="name-mismatch-alert" class="name-mismatch" hidden role="alert"></div>
-    </section>
-
-    <section aria-labelledby="specs-heading">
+    <section data-sub-panel="spec" aria-labelledby="specs-heading">
       <h2 id="specs-heading">Specification</h2>
       <p class="hint">These numbers come from your method's requirements, not from the file. Set them once.</p>
       <div class="specs-grid">
@@ -64,7 +69,17 @@
       </div>
     </section>
 
-    <section aria-labelledby="conditions-heading">
+    <section data-sub-panel="upload" aria-labelledby="upload-heading">
+      <h2 id="upload-heading">Run files</h2>
+      <label for="csv-file">Choose one or more run .csv exports (one file, one run). You can select several at once.</label>
+      <input id="csv-file" type="file" accept=".csv,text/csv" multiple>
+      <p class="hint">Once the file is loaded, check the conditions below look correct. The action appears in step 4 and in the Current run panel.</p>
+      <p id="upload-status" role="status"></p>
+      <div class="calc-row"><button id="calculate-btn" type="button" disabled>Calculate</button><span class="hint">The decision is worked out automatically when a file loads. Press Calculate again after you change a condition or the specification.</span></div>
+      <div id="name-mismatch-alert" class="name-mismatch" hidden role="alert"></div>
+    </section>
+
+    <section data-sub-panel="upload" aria-labelledby="conditions-heading">
       <h2 id="conditions-heading">Run conditions</h2>
       <p class="hint">Read automatically from the file. Check these against the file name before continuing.</p>
       <div id="conditions-container">
@@ -73,39 +88,65 @@
       <ul id="conditions-warnings" class="warnings"></ul>
     </section>
 
-    <section aria-labelledby="peaks-heading">
+    <section data-sub-panel="peaks" aria-labelledby="peaks-heading">
       <h2 id="peaks-heading">Peak table</h2>
       <p id="pressure-readout" class="hint"></p>
+      <div id="chromatogram-container" class="chrom-run"><p class="empty">No file loaded yet.</p></div>
       <div id="peaks-container" class="table-scroll">
         <p class="empty">No file loaded yet.</p>
       </div>
     </section>
 
-    <section aria-labelledby="history-heading">
+    <section data-sub-panel="result" aria-labelledby="result-heading">
+      <h2 id="result-heading">Recommendation</h2>
+            <div id="result-container"></div>
+    </section>
+
+    <aside id="run-summary" class="run-summary" aria-label="Current run summary"></aside>
+  </main>
+
+  <main id="panel-history" class="tab-panel" role="tabpanel" aria-labelledby="tab-history" hidden>
+    <nav class="sub-bar" aria-label="Run history sections"><button type="button" class="hist-sub-button" data-hist-sub="runs">1  Runs and results</button><button type="button" class="hist-sub-button" data-hist-sub="logk">2  Log K vs %B</button></nav>
+
+    <section data-hist-panel="runs" aria-labelledby="history-heading">
       <h2 id="history-heading">Run history</h2>
-      <p class="hint">Every run you load is added here. The tool fits a straight line to log K against %B across this history (always excluding the 90% B point) and derives the minimum %B at which the last peak's tR would land on the tR spec. The solvent and temperature of each run are read from its file name, and the tool uses them to work out which selectivity parameter to change next.</p>
+      <p class="hint">Every run you load is added here with its decision and chromatogram. The solvent and temperature of each run are read from its file name, and the tool uses them to work out which selectivity parameter to change next. The log K vs %B fit built from these runs is in the next step.</p>
+      <div class="history-tools">
+        <button id="toggle-all-chroms" type="button" class="secondary" hidden>Show all chromatograms</button>
+        <button id="clear-history-btn" type="button" class="secondary danger-outline">Clear history</button>
+        <span id="clear-confirm" class="clear-confirm" hidden>
+          <strong id="clear-question">Delete every saved run?</strong>
+          <button id="clear-yes" type="button">Yes, clear it</button>
+          <button id="clear-no" type="button" class="secondary">Cancel</button>
+        </span>
+        <span id="clear-message" class="hint" role="status"></span>
+      </div>
+      <div class="col-groups" role="group" aria-label="Columns to show">
+        <span class="col-groups-label">Show columns:</span>
+        <button type="button" class="col-group-btn" data-group="cond" aria-pressed="false">Conditions</button>
+        <button type="button" class="col-group-btn" data-group="resp" aria-pressed="true">Responses</button>
+        <button type="button" class="col-group-btn" data-group="dec" aria-pressed="true">Decision</button>
+        <span class="hist-legend" aria-label="Decision colours"><span class="stage-chip st-ret">Retention</span><span class="stage-chip st-handoff">Retention → Selectivity</span><span class="stage-chip st-sel">Selectivity</span><span class="stage-chip st-pass">Met</span><span class="stage-chip st-unsafe">Stop</span></span>
+      </div>
       <div id="history-container" class="table-scroll">
         <p class="empty">No runs in the history yet.</p>
       </div>
-      <div class="history-actions">
-        <button id="clear-history-btn" type="button" class="secondary">Clear run history</button>
-      </div>
+    </section>
+
+    <section data-hist-panel="logk" aria-labelledby="logk-heading">
+      <h2 id="logk-heading">Log K vs %B</h2>
+      <p class="hint">The tool fits a straight line to log K against %B across the retention runs and works out the minimum %B at which the last peak's tR would land on your tR spec. Any run that keeps R² below 0.99 is left out of the fit. The fit stops updating once retention is exhausted or the selectivity stage starts.</p>
       <div id="fit-container"></div>
+      <div id="allpeaks-container"></div>
     </section>
-
-    <section aria-labelledby="result-heading">
-      <h2 id="result-heading">Recommendation</h2>
-      <button id="calculate-btn" type="button" disabled>Calculate</button>
-      <div id="result-container"></div>
-    </section>
-
   </main>
 
   <main id="panel-equipment" class="tab-panel" role="tabpanel" aria-labelledby="tab-equipment" hidden>
+    <nav class="sub-bar" aria-label="Equipment steps"><button type="button" class="eq-sub-button" data-eq-sub="instrument">1  Instrument</button><button type="button" class="eq-sub-button" data-eq-sub="params">2  Parameters</button><button type="button" class="eq-sub-button" data-eq-sub="responses">3  Responses</button><button type="button" class="eq-sub-button" data-eq-sub="build">4  Build a column</button><button type="button" class="eq-sub-button" data-eq-sub="nomogram">5  Solvent nomogram</button></nav>
 
-    <section aria-labelledby="equipment-intro-heading">
+    <section data-eq-panel="instrument" aria-labelledby="equipment-intro-heading">
       <h2 id="equipment-intro-heading">Equipment</h2>
-      <p class="hint">A reference for the instrument, so a recommendation can be acted on at the bench without a second document. Click a numbered circle on the diagram to see the module's function and the parameters it controls. Click a parameter row in the table below to see what it does.</p>
+      <p class="hint">A reference for the instrument, so a recommendation can be acted on at the bench without a second document. On the Instrument step, click a numbered circle on the diagram, or the labelled autosampler / manual injector boxes, to see the module’s function and the parameters it controls, then choose “See how this works”. The other steps along the top cover the parameters, the responses from a chromatogram, building a column, and the solvent nomogram.</p>
 
       <div class="legend" aria-label="Colour convention">
         <span class="legend-item"><span class="swatch chemical"></span> Chemical parameter — changes the interactions between the compounds and the phases</span>
@@ -115,10 +156,12 @@
       </div>
     </section>
 
-    <section aria-labelledby="instruments-heading">
+    <section data-eq-panel="instrument" aria-labelledby="instruments-heading">
       <h2 id="instruments-heading">The instrument</h2>
       <p class="hint">The numbered diagram of the instrument in the lab. Click a number to see the module it points to.</p>
 
+      <div class="split">
+      <div class="split-main">
       <div class="instrument-figure" id="instrument-figure">
         <div class="instrument-figure-inner">
           <img id="instrument-image" src="equipment.png" alt="Labelled diagram of the HPLC instrument, with seven numbered modules.">
@@ -135,6 +178,13 @@
             <g class="hotspot" data-module="pump" tabindex="0" role="button" aria-label="4: Pump">
               <circle cx="580" cy="1105" r="55"></circle>
             </g>
+            <g class="hotspot" data-module="injector" tabindex="0" role="button" aria-label="Autosampler or injector">
+              <rect class="hs-area" x="190" y="800" width="400" height="235" rx="24"></rect>
+              <rect class="hs-pill" x="235" y="862" width="310" height="112" rx="16"></rect>
+              <text class="hs-text" x="390" y="904" text-anchor="middle">Autosampler /</text>
+              <text class="hs-text" x="390" y="936" text-anchor="middle">manual injector</text>
+              <text class="hs-sub" x="390" y="962" text-anchor="middle">click for details</text>
+            </g>
             <g class="hotspot" data-module="column" tabindex="0" role="button" aria-label="5: Column and oven">
               <circle cx="775" cy="650" r="55"></circle>
             </g>
@@ -148,10 +198,48 @@
         </div>
       </div>
 
-      <div id="module-detail" class="module-detail" hidden></div>
+      </div>
+      <aside class="split-side" aria-label="Module details">
+        <div class="detail-empty"><strong>Details appear here</strong><p>Click a numbered circle, or the autosampler / manual injector box, to see what the module does, which parameters it controls and how it works.</p></div>
+        <div id="module-detail" class="module-detail" hidden></div>
+      </aside>
+      </div>
     </section>
 
-    <section aria-labelledby="nomogram-heading">
+    <section data-eq-panel="params" aria-labelledby="parameters-heading">
+      <h2 id="parameters-heading">Parameters</h2>
+      <p class="hint">Every parameter the user can set, the module that controls it, its usual range, and what it changes in the separation. The category tells you whether it acts on the chemistry (the interactions between the compounds and the phases) or on the mechanics (the flow, the packing, the shape of the bed). Click a row to see the full description of that parameter. Ranges for the column rows are the values offered in Build a column. Restek sources are in the row details.</p>
+      <div class="split">
+        <div class="split-main"><div id="parameters-container" class="table-scroll"></div></div>
+        <aside class="split-side" aria-label="Parameter details">
+          <div class="detail-empty"><strong>Details appear here</strong><p>Click a row in the table to see what the parameter does to the separation.</p></div>
+          <div id="parameter-detail" class="module-detail" hidden></div>
+        </aside>
+      </div>
+    </section>
+
+    <section data-eq-panel="responses" aria-labelledby="responses-heading">
+      <h2 id="responses-heading">Responses</h2>
+      <p class="hint">The quantities that come out of a run, split into what the instrument reads directly on the chromatogram and what is calculated from those readings.</p>
+
+      <div id="chromatogram-lab"></div>
+
+      <details class="nomogram-table">
+        <summary>Reference tables: the same responses as a list</summary>
+        <h3>Read directly on the chromatogram</h3>
+        <div id="responses-read-container" class="table-scroll"></div>
+        <h3>Calculated from the chromatogram</h3>
+        <div id="responses-calculated-container" class="table-scroll"></div>
+      </details>
+    </section>
+
+    <section data-eq-panel="build" aria-labelledby="builder-heading">
+      <h2 id="builder-heading">Build a column</h2>
+      <p class="hint">Choose each property in turn and the column on the right assembles as you go. These six properties are what the column label and the file name describe.</p>
+      <div id="column-builder"></div>
+    </section>
+
+    <section data-eq-panel="nomogram" aria-labelledby="nomogram-heading">
       <h2 id="nomogram-heading">Solvent nomogram</h2>
       <p class="hint">Two mobile phases of different solvents have the same strength when their %B values sit on the same row of the nomogram. The table below converts a %B on one solvent to the isoeluotropic %B on another. Values between the published rows are interpolated linearly.</p>
 
@@ -210,24 +298,6 @@
       </details>
     </section>
 
-    <section aria-labelledby="parameters-heading">
-      <h2 id="parameters-heading">Parameters</h2>
-      <p class="hint">Every parameter the user can set, the module that controls it, its usual range, and what it changes in the separation. The category tells you whether it acts on the chemistry (the interactions between the compounds and the phases) or on the mechanics (the flow, the packing, the shape of the bed). Click a row to see the full description of that parameter.</p>
-      <div id="parameters-container" class="table-scroll"></div>
-      <div id="parameter-detail" class="module-detail" hidden></div>
-    </section>
-
-    <section aria-labelledby="responses-heading">
-      <h2 id="responses-heading">Responses</h2>
-      <p class="hint">The quantities that come out of a run, split into what the instrument reads directly on the chromatogram and what is calculated from those readings.</p>
-
-      <h3>Read directly on the chromatogram</h3>
-      <div id="responses-read-container" class="table-scroll"></div>
-
-      <h3>Calculated from the chromatogram</h3>
-      <div id="responses-calculated-container" class="table-scroll"></div>
-    </section>
-
   </main>
 
   <div id="image-overlay" class="image-overlay" hidden role="dialog" aria-modal="true" aria-label="Enlarged instrument photo">
@@ -235,8 +305,65 @@
     <img id="image-overlay-img" src="" alt="">
   </div>
 
+  <footer class="page-footer">
+    <div class="footer-grid">
+      <div>
+        <h2>HPLC method development assistant</h2>
+        <p>Reads LabSolutions CSV exports, applies the retention and selectivity flowchart, and recommends the next run.</p>
+      </div>
+      <div>
+        <h2>Good to know</h2>
+        <ul>
+          <li>Everything runs in your browser. Run history is saved only on this device.</li>
+          <li>Recommendations follow the lab flowchart. Check them against your lab manual.</li>
+          <li>Column data on the Equipment tab comes from Restek's product pages.</li>
+        </ul>
+      </div>
+      <div>
+        <h2>About</h2>
+        <p>Eliza Ear &middot; Student ID 34485767<br>BPS2032, Monash University</p>
+        <p>Built with help from an AI assistant (Claude), as the assignment allows.</p>
+      </div>
+    </div>
+    <p class="footer-base">&copy; 2026 Eliza Ear. Educational use only.</p>
+  </footer>
+
+  
+  <main id="panel-naming" class="tab-panel" role="tabpanel" aria-labelledby="tab-naming" hidden>
+    <section class="nm-page" aria-labelledby="naming-heading">
+      <h2 id="naming-heading">Naming guide</h2>
+      <p class="hint">The tool reads the conditions of a run from its file name, and writes the next file names the same way. Hover over a part to see what it means.</p>
+      <div class="nm-key" id="nm-key"></div>
+
+      <div class="nm-card">
+        <h3>Data file <span class="nm-sub">the CSV and PDF</span></h3>
+        <div id="nm-data" class="nm-name"></div>
+        <div id="nm-data-detail" class="nm-detail" aria-live="polite">Hover over, or tap, a part of the name.</div>
+      </div>
+
+      <div class="nm-card">
+        <h3>Method file <span class="nm-sub">.lcm</span></h3>
+        <div id="nm-method" class="nm-name"></div>
+        <p class="hint">Only what is set in the method: mode, %B, flow, injection volume, oven temperature and wavelength. No run number, group, column or sample.</p>
+      </div>
+
+      <div class="nm-card">
+        <h3>Try a file name</h3>
+        <input id="nm-input" type="text" class="nm-input" placeholder="Paste a data file name, e.g. GR09-05-3-ACN-3-ISO-90-1.5-20-CP-0.1-C18aqP-150x4.6x5-amb-254" aria-label="File name to decode">
+        <div id="nm-output"></div>
+      </div>
+    </section>
+  </main>
+
   <script src="equipment-data.js"></script>
   <script src="logic.js"></script>
+  <script src="monash-columns.js"></script>
+  <script src="module-howto.js"></script>
+  <script src="chromatogram.js"></script>
+  <script src="logk-chart.js"></script>
   <script src="app.js"></script>
+  <script src="ligand-structures.js"></script>
+  <script src="equipment-interactive.js"></script>
+  <script src="nav.js"></script>
 </body>
 </html>
