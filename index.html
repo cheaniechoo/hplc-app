@@ -15,7 +15,7 @@
       </span>
       <div>
         <h1>HPLC method development assistant</h1>
-        <p>Upload LabSolutions exports (.csv or Excel) and see where each run sits in the retention and selectivity flowchart, with a recommendation for the next run.</p>
+        <p>Upload LabSolutions exports (.csv or Excel) and see where each run sits in the isocratic flow chart (retention, selectivity, efficiency) or the gradient flow chart, with the next run's conditions.</p>
       </div>
     </div>
     <div class="header-meta">
@@ -28,13 +28,43 @@
   </header>
 
   <nav class="tab-bar" aria-label="Main sections">
-    <div class="nav-group" data-group="flowchart"><button id="tab-flowchart" class="tab-button active" type="button" aria-controls="panel-flowchart" aria-selected="true">Dashboard</button></div>
-    <div class="nav-group" data-group="history"><button id="tab-history" class="tab-button" type="button" aria-controls="panel-history" aria-selected="false">Run history</button></div>
+    <div class="nav-group" data-group="start"><button id="tab-start" class="tab-button active" type="button" aria-controls="panel-start" aria-selected="true">Start</button></div>
+    <div class="nav-group" data-group="flowchart"><button id="tab-flowchart" class="tab-button" type="button" aria-controls="panel-flowchart" aria-selected="false">Isocratic dashboard</button></div>
+    <div class="nav-group" data-group="history"><button id="tab-history" class="tab-button" type="button" aria-controls="panel-history" aria-selected="false">Isocratic run history</button></div>
+    <div class="nav-group" data-group="gradient"><button id="tab-gradient" class="tab-button" type="button" aria-controls="panel-gradient" aria-selected="false">Gradient dashboard</button></div>
     <div class="nav-group" data-group="equipment"><button id="tab-equipment" class="tab-button" type="button" aria-controls="panel-equipment" aria-selected="false">Equipment</button></div>
     <div class="nav-group" data-group="naming"><button id="tab-naming" class="tab-button" type="button" aria-controls="panel-naming" aria-selected="false">Naming guide</button></div>
   </nav>
 
-  <main id="panel-flowchart" class="tab-panel" role="tabpanel" aria-labelledby="tab-flowchart">
+  <main id="panel-start" class="tab-panel" role="tabpanel" aria-labelledby="tab-start">
+    <section class="start-section">
+      <h2>Start: how do you want to develop the method?</h2>
+      <p class="hint">The isocratic and gradient flow charts are two separate entries, each with its own dashboard, specification, files and decisions.</p>
+      <div class="start-grid">
+        <div class="start-card">
+          <h3>Isocratic</h3>
+          <p>%B stays constant through the run. The flow chart goes equipment, retention (%B), selectivity (temperature, solvent, ligand), then efficiency (column and flow) once all the peaks are there.</p>
+          <button type="button" id="start-iso">Develop in isocratic mode</button>
+        </div>
+        <div class="start-card">
+          <h3>Gradient</h3>
+          <p>%B changes during the run. Start from a scouting gradient (5&ndash;100 %B in 20 min) and steer with gradient steepness (GS): cases G1 &uarr;, G1 &darr;, G1 &#x2715;, G2, G3 and G4.</p>
+          <button type="button" id="start-gra">Develop in gradient mode</button>
+        </div>
+      </div>
+    </section>
+    <section class="start-section">
+      <h2>Worked runs or a clean start</h2>
+      <p class="hint"><strong>Worked</strong> fills in the full set of runs, with the specifications tested and the decision returned for each. <strong>Clear</strong> empties both dashboards and resets the specifications, so you can enter your own runs.</p>
+      <div class="start-actions">
+        <button type="button" id="btn-worked">Worked</button>
+        <button type="button" id="btn-clear" class="secondary">Clear</button>
+      </div>
+      <p id="start-status" class="hint" role="status"></p>
+    </section>
+  </main>
+
+  <main id="panel-flowchart" class="tab-panel" role="tabpanel" aria-labelledby="tab-flowchart" hidden>
     <nav class="sub-bar" aria-label="Dashboard steps"><button type="button" class="sub-button" data-sub="spec">1  Specification</button><button type="button" class="sub-button" data-sub="upload">2  Upload and conditions</button><button type="button" class="sub-button" data-sub="peaks">3  Peak table</button><button type="button" class="sub-button" data-sub="result">4  Recommendation</button></nav>
 
     <section data-sub-panel="spec" aria-labelledby="specs-heading">
@@ -142,6 +172,58 @@
       <p class="hint">The tool fits a straight line to log K against %B across the retention runs and works out the minimum %B at which the last peak's tR would land on your tR spec. Any run that keeps R² below 0.99 is left out of the fit. The fit stops updating once retention is exhausted or the selectivity stage starts.</p>
       <div id="fit-container"></div>
       <div id="allpeaks-container"></div>
+    </section>
+  </main>
+
+  <main id="panel-gradient" class="tab-panel" role="tabpanel" aria-labelledby="tab-gradient" hidden>
+    <nav class="sub-bar" aria-label="Gradient dashboard steps"><button type="button" class="gsub-button" data-gsub="spec">1  Specification</button><button type="button" class="gsub-button" data-gsub="upload">2  Upload and conditions</button><button type="button" class="gsub-button" data-gsub="result">3  Decision</button><button type="button" class="gsub-button" data-gsub="history">4  Gradient run history</button></nav>
+
+    <section data-gsub-panel="spec" aria-labelledby="g-spec-heading">
+      <h2 id="g-spec-heading">Gradient specification</h2>
+      <p class="hint">Separate from the isocratic specification. Changing a value decides every gradient run again.</p>
+      <div class="specs-grid">
+        <div class="field"><label for="g-spec-peaks">Target number of peaks</label><input id="g-spec-peaks" type="number" min="1" step="1" value="7"></div>
+        <div class="field"><label for="g-spec-rs">Resolution (Rs) spec</label><input id="g-spec-rs" type="number" min="0" step="0.1" value="1.4"></div>
+        <div class="field"><label for="g-spec-runtime">Run-time spec: tR last peak (min)</label><input id="g-spec-runtime" type="number" min="0" step="0.5" value="15"></div>
+        <div class="field"><label for="g-spec-pressure">Max system pressure (psi)</label><input id="g-spec-pressure" type="number" min="0" step="1" value="4000"></div>
+      </div>
+      <details class="g-advanced">
+        <summary>Advanced settings (optional): the rule factors</summary>
+        <p class="hint">Set to the values in the gradient case table. Change them only if your method calls for it.</p>
+        <div class="specs-grid">
+          <div class="field"><label for="g-adv-hold">Isocratic hold at the start (min)</label><input id="g-adv-hold" type="number" min="0" step="0.5" value="2"></div>
+          <div class="field"><label for="g-adv-tgmax">tG limit for G2 (min)</label><input id="g-adv-tgmax" type="number" min="1" step="1" value="60"></div>
+          <div class="field"><label for="g-adv-g1up">G1 &uarr; tG factor</label><input id="g-adv-g1up" type="number" min="0.1" step="0.05" value="0.5"></div>
+          <div class="field"><label for="g-adv-g1down">G1 &darr; tG factor (from scouting)</label><input id="g-adv-g1down" type="number" min="1" step="0.05" value="1.2"></div>
+          <div class="field"><label for="g-adv-g2">G2 F factor (tG divided by it)</label><input id="g-adv-g2" type="number" min="0.1" step="0.05" value="0.8"></div>
+          <div class="field"><label for="g-adv-shrink-start">G3 margin before the first peak (%B)</label><input id="g-adv-shrink-start" type="number" min="0" step="1" value="20"></div>
+          <div class="field"><label for="g-adv-shrink-end">G3 margin after the last peak (%B)</label><input id="g-adv-shrink-end" type="number" min="0" step="1" value="5"></div>
+          <div class="field"><label class="g-check"><input id="g-adv-marker" type="checkbox" checked> The first peak is uracil (t0 marker), so G3 uses the second peak as the first compound</label></div>
+        </div>
+      </details>
+    </section>
+
+    <section data-gsub-panel="upload" aria-labelledby="g-upload-heading">
+      <h2 id="g-upload-heading">Gradient run files</h2>
+      <label for="g-file">Choose one or more gradient run exports (.csv or Excel). The file name gives %B ini, %B fin, tG and flow after GRA, e.g. &hellip;-ACN-3-GRA-5-100-20-1.5-20u-CP-0.1-C18-P-150x4.6x5-amb-254.</label>
+      <input id="g-file" type="file" accept=".csv,text/csv,.xlsx,.xls" multiple>
+      <p id="g-upload-status" role="status"></p>
+      <h3>Run conditions</h3>
+      <div id="g-conditions"><p class="empty">No gradient file loaded yet.</p></div>
+      <h3>Peak table</h3>
+      <div id="g-peaks" class="table-scroll"><p class="empty">No gradient file loaded yet.</p></div>
+    </section>
+
+    <section data-gsub-panel="result" aria-labelledby="g-result-heading">
+      <h2 id="g-result-heading">Decision</h2>
+      <div id="g-result"></div>
+    </section>
+
+    <section data-gsub-panel="history" aria-labelledby="g-history-heading">
+      <h2 id="g-history-heading">Gradient run history</h2>
+      <p class="hint">Runs in run order. Under each run, the conditions of the next run are pre-filled with their GS. Click a run to see its decision.</p>
+      <div id="g-history"></div>
+      <button type="button" id="g-clear-history" class="secondary">Clear the gradient history</button>
     </section>
   </main>
 
@@ -313,7 +395,7 @@
     <div class="footer-grid">
       <div>
         <h2>HPLC method development assistant</h2>
-        <p>Reads LabSolutions exports (.csv or Excel), applies the retention and selectivity flowchart, and recommends the next run.</p>
+        <p>Reads LabSolutions exports (.csv or Excel), applies the isocratic (retention, selectivity, efficiency) and gradient flow charts, and recommends the next run.</p>
       </div>
       <div>
         <h2>Good to know</h2>
@@ -367,7 +449,9 @@
   <script src="module-howto.js"></script>
   <script src="chromatogram.js"></script>
   <script src="logk-chart.js"></script>
+  <script src="gradient.js"></script>
   <script src="app.js"></script>
+  <script src="gradient-app.js"></script>
   <script src="ligand-structures.js"></script>
   <script src="equipment-interactive.js"></script>
   <script src="nav.js"></script>

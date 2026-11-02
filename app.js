@@ -15,7 +15,9 @@
 // ---------------------------------------------------------------------------
 
 const MAIN_TABS = {
+  start: ["tab-start", "panel-start"],
   flowchart: ["tab-flowchart", "panel-flowchart"],
+  gradient: ["tab-gradient", "panel-gradient"],
   history: ["tab-history", "panel-history"],
   equipment: ["tab-equipment", "panel-equipment"],
   naming: ["tab-naming", "panel-naming"],
@@ -2717,8 +2719,76 @@ if (window.userColumns) {
     }
   });
 }
-selectTab("flowchart");
+selectTab("start");
 showSub("spec");
+
+// ---------------------------------------------------------------------------
+// Start page: choose isocratic or gradient; Worked and Clear
+// ---------------------------------------------------------------------------
+function appClearAll() {
+  handleClearHistory();
+  currentSummary = null; currentMaxBackPressure = null; currentConditions = null; currentRunFileName = null; lastRunRecord = null; lastSpecsUsed = null;
+  [specPeaks, specTr, specRs, specRsFloor, specMinPercentB, specMaxPressure].forEach(function (el) { if (el) el.value = el.defaultValue; });
+  conditionsContainer.replaceChildren(makeEmptyMessage("No file loaded yet."));
+  conditionsWarnings.replaceChildren();
+  peaksContainer.replaceChildren(makeEmptyMessage("No file loaded yet."));
+  const chromBox = document.getElementById("chromatogram-container");
+  if (chromBox) chromBox.replaceChildren(makeEmptyMessage("No file loaded yet."));
+  pressureReadout.textContent = "";
+  resultContainer.replaceChildren();
+  nameMismatchAlert.hidden = true;
+  uploadStatus.textContent = "";
+  calculateBtn.disabled = true;
+  summaryOutcome = null;
+  renderRunSummary();
+  updateSpecBanner();
+  if (window.gradientApp) window.gradientApp.clear();
+}
+
+function fetchAsFile(path) {
+  return fetch(path, { cache: "no-store" }).then(function (r) {
+    if (!r.ok) throw new Error("couldn't load " + path);
+    return r.blob();
+  }).then(function (blob) { return new File([blob], path.split("/").pop()); });
+}
+
+function loadWorked() {
+  const say = function (t) { const el = document.getElementById("start-status"); if (el) el.textContent = t; };
+  say("Loading the worked runs…");
+  fetch("worked/manifest.json", { cache: "no-store" }).then(function (r) {
+    if (!r.ok) throw new Error("no worked runs have been added to the app yet (worked/manifest.json is missing)");
+    return r.json();
+  }).then(function (m) {
+    appClearAll();
+    const iso = m.isocratic || { files: [] };
+    const gra = m.gradient || { files: [] };
+    Object.keys(iso.specs || {}).forEach(function (id) { const el = document.getElementById(id); if (el) el.value = iso.specs[id]; });
+    Object.keys(gra.specs || {}).forEach(function (id) { const el = document.getElementById(id); if (el) { if (el.type === "checkbox") el.checked = !!gra.specs[id]; else el.value = gra.specs[id]; } });
+    return Promise.all((iso.files || []).map(fetchAsFile)).then(function (isoFiles) {
+      if (isoFiles.length) handleFilesChosen({ target: { files: isoFiles, value: "" } });
+      return Promise.all((gra.files || []).map(fetchAsFile));
+    }).then(function (graFiles) {
+      return window.gradientApp && graFiles.length ? window.gradientApp.handleFiles(graFiles) : null;
+    }).then(function () {
+      say("Loaded " + (iso.files || []).length + " isocratic and " + (gra.files || []).length + " gradient runs, with the specifications they were tested at.");
+    });
+  }).catch(function (err) { say("Worked runs couldn't be loaded: " + err.message + "."); });
+}
+
+(function () {
+  const iso = document.getElementById("start-iso");
+  const gra = document.getElementById("start-gra");
+  if (iso) iso.addEventListener("click", function () { document.getElementById("tab-flowchart").click(); showSub("spec"); });
+  if (gra) gra.addEventListener("click", function () { document.getElementById("tab-gradient").click(); if (window.gradientApp) window.gradientApp.show("spec"); });
+  const w = document.getElementById("btn-worked");
+  const c = document.getElementById("btn-clear");
+  if (w) w.addEventListener("click", loadWorked);
+  if (c) c.addEventListener("click", function () {
+    appClearAll();
+    const el = document.getElementById("start-status");
+    if (el) el.textContent = "Cleared. Both dashboards are empty and the specifications are back to their defaults.";
+  });
+})();
 
 
 // ---------------------------------------------------------------------------

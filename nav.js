@@ -4,6 +4,7 @@
   const groups = [
     { group: "flowchart", tab: "tab-flowchart", selector: ".sub-button", dataKey: "sub" },
     { group: "history", tab: "tab-history", selector: ".hist-sub-button", dataKey: "histSub" },
+    { group: "gradient", tab: "tab-gradient", selector: ".gsub-button", dataKey: "gsub" },
     { group: "equipment", tab: "tab-equipment", selector: ".eq-sub-button", dataKey: "eqSub" },
   ];
 
