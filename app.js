@@ -264,14 +264,14 @@ function handleFilesChosen(event) {
   const files = Array.from(event.target.files || []);
   if (files.length === 0) return;
 
-  const nonCsv = files.filter(function (f) {
-    return !f.name.toLowerCase().endsWith(".csv");
+  const unsupported = files.filter(function (f) {
+    return !isCsvFile(f) && !isExcelFile(f);
   });
-  if (nonCsv.length > 0) {
+  if (unsupported.length > 0) {
     showUploadStatus(
-      nonCsv.length === 1
-        ? "One of the chosen files isn't a .csv. Choose files that end in .csv."
-        : nonCsv.length + " of the chosen files aren't .csv. Choose files that end in .csv.",
+      unsupported.length === 1
+        ? "One of the chosen files isn't a .csv or Excel file. Choose files that end in .csv, .xlsx or .xls."
+        : unsupported.length + " of the chosen files aren't .csv or Excel files. Choose files that end in .csv, .xlsx or .xls.",
       true
     );
     return;
@@ -284,7 +284,7 @@ function handleFilesChosen(event) {
   }
 
   const readers = files.map(function (file) {
-    return readFileAsText(file);
+    return isExcelFile(file) ? readExcelAsText(file) : readFileAsText(file);
   });
 
   Promise.all(readers)
@@ -341,6 +341,51 @@ function readFileAsText(file) {
     reader.onload = function () { resolve(reader.result); };
     reader.onerror = function () { reject(new Error("The file couldn't be read.")); };
     reader.readAsText(file);
+  });
+}
+
+function isCsvFile(file) {
+  return /\.csv$/i.test(file.name);
+}
+
+function isExcelFile(file) {
+  return /\.(xlsx|xls)$/i.test(file.name);
+}
+
+// The spreadsheet library is large, so it's only loaded the first time an Excel file is chosen.
+let sheetJsLoading = null;
+function loadSheetJs() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (!sheetJsLoading) {
+    sheetJsLoading = new Promise(function (resolve, reject) {
+      const script = document.createElement("script");
+      script.src = "vendor/xlsx.full.min.js";
+      script.onload = function () { resolve(window.XLSX); };
+      script.onerror = function () {
+        sheetJsLoading = null;
+        reject(new Error("The Excel reader couldn't be loaded. Check your internet connection and try again."));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return sheetJsLoading;
+}
+
+function readExcelAsText(file) {
+  return loadSheetJs().then(function (XLSX) {
+    return new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onload = function () {
+        try {
+          const workbook = XLSX.read(new Uint8Array(reader.result), { type: "array" });
+          resolve(workbookToText(XLSX, workbook));
+        } catch (err) {
+          reject(new Error("“" + file.name + "” couldn't be opened as an Excel file. " + err.message));
+        }
+      };
+      reader.onerror = function () { reject(new Error("The file couldn't be read.")); };
+      reader.readAsArrayBuffer(file);
+    });
   });
 }
 
@@ -2664,7 +2709,7 @@ renderRunSummary();
 
   const labels = [["grNumber", "Group", "id"], ["runNumber", "Run number", "id"], ["hplcNumber", "HPLC number", "id"], ["solvent", "Solvent B", "mp"], ["pH", "pH", "mp"], ["mode", "Mode", "mp"], ["percentB", "%B", "mp"], ["flowRate", "Flow rate (mL/min)", "mp"], ["sampleVolume", "Injection volume (\u00b5L)", "sample"], ["sampleType", "Sample", "sample"], ["sampleConcentration", "Concentration (mg/mL)", "sample"], ["ligand", "Ligand", "col"], ["columnType", "Bead code", "col"], ["columnDimensions", "Column (L \u00d7 ID \u00d7 dp)", "col"], ["temperature", "Temperature", "cond"], ["wavelength", "Wavelength (nm)", "cond"]];
   input.addEventListener("input", function () {
-    const name = input.value.trim().replace(/\.(csv|pdf|lcd|lcm)$/i, "");
+    const name = input.value.trim().replace(/\.(csv|xlsx|xls|pdf|lcd|lcm)$/i, "");
     out.replaceChildren();
     if (!name) return;
     const res = parseConditionsFromName(name);

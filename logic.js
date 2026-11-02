@@ -14,6 +14,36 @@ function splitIntoLines(rawText) {
         return fields;
     });
 }
+// Turn an Excel workbook (.xlsx / .xls, read with the SheetJS library) into the same
+// comma-separated text a LabSolutions .csv export gives, so the rest of the app reads
+// both file types the same way. Uses the sheet holding the "[Peak Table" section, or
+// the first sheet if none has it.
+function workbookToText(XLSX, workbook) {
+    const sheetHasPeakTable = function (sheet) {
+        return Object.keys(sheet).some(function (addr) {
+            const cell = sheet[addr];
+            return addr[0] !== "!" && cell && typeof cell.v === "string" && cell.v.indexOf("[Peak Table") === 0;
+        });
+    };
+    const sheetName = workbook.SheetNames.find(function (n) { return sheetHasPeakTable(workbook.Sheets[n]); })
+        || workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet || !sheet["!ref"]) {
+        throw new Error("The spreadsheet is empty.");
+    }
+    // Always start from cell A1 so the columns line up with the .csv layout.
+    const range = XLSX.utils.decode_range(sheet["!ref"]);
+    range.s.r = 0;
+    range.s.c = 0;
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "", blankrows: true, range: range });
+    return rows.map(function (row) {
+        return row.map(function (cell) {
+            if (cell === null || cell === undefined) return "";
+            // Commas inside a cell would split it into two fields, so swap them for spaces.
+            return String(cell).replace(/,/g, " ");
+        }).join(",");
+    }).join("\n");
+}
 function findSampleName(lines) {
     for (const fields of lines) {
         if (fields[0] === "Sample Name" && fields.length > 1) {

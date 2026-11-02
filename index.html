@@ -15,7 +15,7 @@
       </span>
       <div>
         <h1>HPLC method development assistant</h1>
-        <p>Upload LabSolutions CSV exports and see where each run sits in the retention and selectivity flowchart, with a recommendation for the next run.</p>
+        <p>Upload LabSolutions exports (.csv or Excel) and see where each run sits in the retention and selectivity flowchart, with a recommendation for the next run.</p>
       </div>
     </div>
     <div class="header-meta">
@@ -71,8 +71,8 @@
 
     <section data-sub-panel="upload" aria-labelledby="upload-heading">
       <h2 id="upload-heading">Run files</h2>
-      <label for="csv-file">Choose one or more run .csv exports (one file, one run). You can select several at once.</label>
-      <input id="csv-file" type="file" accept=".csv,text/csv" multiple>
+      <label for="csv-file">Choose one or more run exports, as .csv or Excel (.xlsx, .xls) files (one file, one run). You can select several at once.</label>
+      <input id="csv-file" type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xls,application/vnd.ms-excel" multiple>
       <p class="hint">Once the file is loaded, check the conditions below look correct. The action appears in step 4 and in the Current run panel.</p>
       <p id="upload-status" role="status"></p>
       <div class="calc-row"><button id="calculate-btn" type="button" disabled>Calculate</button><span class="hint">The decision is worked out automatically when a file loads. Press Calculate again after you change a condition or the specification.</span></div>
@@ -309,7 +309,7 @@
     <div class="footer-grid">
       <div>
         <h2>HPLC method development assistant</h2>
-        <p>Reads LabSolutions CSV exports, applies the retention and selectivity flowchart, and recommends the next run.</p>
+        <p>Reads LabSolutions exports (.csv or Excel), applies the retention and selectivity flowchart, and recommends the next run.</p>
       </div>
       <div>
         <h2>Good to know</h2>
