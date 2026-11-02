@@ -54,8 +54,9 @@
           <input id="spec-rs" type="number" min="0" step="0.1" value="1.4">
         </div>
         <div class="field">
-          <label for="spec-rs-floor">Resolution (Rs) floor</label>
+          <label for="spec-rs-floor">Rs floor fallback</label>
           <input id="spec-rs-floor" type="number" min="0" step="0.1" value="1.0">
+          <p class="hint">The Rs floor is calculated for each 7-peak run from the tR, back-pressure and Rs specs (Awesome Calculator). This value is only used if a file lacks what that calculation needs.</p>
         </div>
         <div class="field">
           <label for="spec-min-percent-b">Minimum %B (optional override)</label>
@@ -67,6 +68,9 @@
           <input id="spec-max-pressure" type="number" min="0" step="1" value="4000">
         </div>
       </div>
+      <h3 class="cols-heading">Your columns</h3>
+      <p class="hint">Efficiency recommendations only use columns ticked here, with the same ligand as the run. It starts as the Monash column list (in the lab). Untick the ones you don't have and add any you could order; a column in the lab is preferred when two options both meet the specs. A Raptor (core-shell) column in the list switches the Rs floor to the SPP floor.</p>
+      <div id="columns-container"></div>
     </section>
 
     <section data-sub-panel="upload" aria-labelledby="upload-heading">
@@ -356,8 +360,10 @@
   </main>
 
   <script src="equipment-data.js"></script>
+  <script src="efficiency.js"></script>
   <script src="logic.js"></script>
   <script src="monash-columns.js"></script>
+  <script src="user-columns.js"></script>
   <script src="module-howto.js"></script>
   <script src="chromatogram.js"></script>
   <script src="logk-chart.js"></script>

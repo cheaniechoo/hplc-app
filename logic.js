@@ -730,9 +730,11 @@ function classifyRetentionTime(trLastPeak, tRSpec) {
     return "<";
 }
 function classifyResolution(minResolution, rsFloor, rsSpec) {
+    // Rs at or above spec is always "> spec", even if the calculated floor sits above the spec
+    // (that happens when the run has no tR or BP headroom left).
+    if (minResolution >= rsSpec) return ">";
     if (minResolution < rsFloor) return "<<";
-    if (minResolution < rsSpec) return "floor-spec";
-    return ">";
+    return "floor-spec";
 }
 function roundPercentB(value) {
     return Math.round(value * 10) / 10;
@@ -1290,7 +1292,21 @@ function decide(summary, specs, history, options) {
         };
     }
     const trClass = classifyRetentionTime(summary.trLastPeak, specs.tRSpec);
-    const rClass = classifyResolution(summary.minResolution, specs.rsFloor, specs.rsSpec);
+    // The Rs floor is calculated from the run (Awesome Calculator), so it moves with the tR, BP and Rs specs.
+    // The typed-in floor is only a fallback for a file that lacks what the calculation needs.
+    const effInput = opts.efficiency || null;
+    const effRef = effInput && effInput.reference && effInput.reference.ok ? effInput.reference.ref : null;
+    let floors = null;
+    let floorUsed = Math.min(specs.rsFloor, specs.rsSpec);
+    let floorSource = "typed";
+    if (effRef && typeof rsFloors === "function") {
+        floors = rsFloors(effRef, specs);
+        const userCols = effInput.columns || [];
+        const sppAvailable = effRef.spp > 1 || userCols.some(function (c) { return canonicalLigand(c.ligand) === effRef.ligand && isCoreShell(c.line); });
+        floorUsed = sppAvailable ? floors.spp : floors.fpp;
+        floorSource = sppAvailable ? "spp" : "fpp";
+    }
+    const rClass = classifyResolution(summary.minResolution, floorUsed, specs.rsSpec);
     const outcome = centralCheck(trClass, rClass);
     const result = {
         stage: outcome.stageName || "Central check",
@@ -1298,10 +1314,41 @@ function decide(summary, specs, history, options) {
         action: outcome.action || null,
         message: outcome.message,
         reason: outcome.reason || null,
-        outOfScopeNote: outcome.outOfScope ? OUT_OF_SCOPE_NOTE : null,
+        outOfScopeNote: null,
         trClass: trClass,
         rClass: rClass,
+        floors: floors,
+        floorUsed: floorUsed,
+        floorSource: floorSource,
     };
+    if (effRef && typeof recommendEfficiency === "function") {
+        const eff = recommendEfficiency(effRef, specs, trClass, rClass, effInput.columns || []);
+        result.efficiency = eff;
+        result.efficiencyRef = effRef;
+        if (eff.selectivity && !outcome.gotoSelectivity) {
+            // Row 1 below the floor with no column and flow that meet all three specs: go to selectivity.
+            outcome.gotoSelectivity = true;
+            result.stage = "Selectivity";
+            result.pass = false;
+            result.action = "Return to the Selectivity stage.";
+            result.message = "Rs (" + summary.minResolution.toFixed(2) + ") is below the floor (" + floorUsed.toFixed(2) + "). No column in your list and no flow rate put tR, back pressure and Rs all in spec, so efficiency cannot close the gap: the peak spacing has to change.";
+            result.reason = "Increase L is only a solution if tR and BP stay in spec. Below the floor, no change of column or flow can bring Rs to spec, so the method goes back to selectivity.";
+        } else if (eff.best) {
+            result.action = efficiencyActionText(eff, effRef);
+            const b = eff.best;
+            result.prediction = predictionText(b);
+            result.message = "Case " + eff.caseNumber + " of the efficiency table (" + eff.caseLabel + "). Flow chart: " + eff.tableAction + "." +
+                " Predicted for the next run: " + predictionText(b) + "." +
+                (eff.reachesSpec ? "" : " No column in your list reaches the Rs spec with the levers this case allows; this is the closest one.");
+            if (eff.met) { result.stage = "Complete"; result.pass = true; }
+            else result.stage = "Efficiency";
+        } else if (eff.met) {
+            result.stage = "Complete";
+            result.pass = true;
+        }
+    } else if (outcome.outOfScope) {
+        result.outOfScopeNote = "The tool couldn't predict the next column and flow for this run" + (effInput && effInput.reference && effInput.reference.missing ? " because it is missing: " + effInput.reference.missing.join(", ") + "." : ".");
+    }
     if (outcome.gotoSelectivity) {
         result.selectivity = nextSelectivityStep(history, summary, specs, "resolution", {
             currentConditions: conditions,

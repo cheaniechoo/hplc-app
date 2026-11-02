@@ -208,6 +208,21 @@ function storeResultInHistory(fileName, result) {
   }
 }
 
+// The efficiency part of a decision, kept with the run in the history: the case,
+// the floor, the next column and flow, and the predicted responses.
+function efficiencyForHistory(main, fileName) {
+  if (!main || !main.efficiency) return null;
+  const eff = main.efficiency;
+  const pick = chosenEfficiencyOption(main, fileName) || eff.best;
+  const out = { caseNumber: eff.caseNumber, caseLabel: eff.caseLabel, floor: typeof main.floorUsed === "number" ? main.floorUsed : null, floorSource: main.floorSource || null };
+  if (pick) {
+    out.next = { ligand: pick.column.ligand, line: pick.column.line, L: pick.column.L, ID: pick.column.ID, dp: pick.column.dp, coreShell: pick.column.spp > 1, F: pick.F };
+    out.prediction = { tR: pick.tR, BP: pick.BP, Rs: pick.Rs };
+    out.chosen = pick !== eff.best;
+  }
+  return out;
+}
+
 function saveResultToHistory(outcomes) {
   if (!currentRunFileName) return;
   const main = outcomes.filter(Boolean).slice(-1)[0];
@@ -215,6 +230,7 @@ function saveResultToHistory(outcomes) {
   storeResultInHistory(currentRunFileName, {
     stage: main.stage || "", action: main.action || "", message: main.message || "",
     pass: !!main.pass, unsafe: !!main.unsafe, specs: readSpecsForDisplay(),
+    efficiency: efficiencyForHistory(main, currentRunFileName),
   });
   renderHistory();
   renderFit();
@@ -229,6 +245,30 @@ function readChosenOption(fileName) {
   const h = readHistory();
   for (let i = h.length - 1; i >= 0; i--) if (h[i].fileName === fileName) return h[i].chosen || null;
   return null;
+}
+// The efficiency option the user picked (column + flow), saved with the run.
+function effOptionKey(o) {
+  return [o.column.ligand, o.column.line, o.column.L, o.column.ID, o.column.dp, o.column.spp, o.F.toFixed(2)].join("|");
+}
+function allEfficiencyOptions(main) {
+  const eff = main && main.efficiency;
+  if (!eff) return [];
+  return [eff.best].concat(eff.inCase || [], eff.others || []).filter(Boolean);
+}
+function chosenEfficiencyOption(main, fileName) {
+  if (!fileName || !main || !main.efficiency) return null;
+  const h = readHistory();
+  let saved = null;
+  for (let i = h.length - 1; i >= 0; i--) if (h[i].fileName === fileName) { saved = h[i].chosenEff || null; break; }
+  if (!saved) return null;
+  return allEfficiencyOptions(main).find(function (o) { return effOptionKey(o) === saved; }) || null;
+}
+function saveChosenEfficiency(fileName, key) {
+  if (!fileName) return;
+  const h = readHistory();
+  for (let i = h.length - 1; i >= 0; i--) {
+    if (h[i].fileName === fileName) { h[i].chosenEff = key; writeHistory(h); break; }
+  }
 }
 function saveChosenOption(fileName, choice) {
   if (!fileName) return;
@@ -695,9 +735,12 @@ function renderHistory() {
     ["Resolution (Rmin)", "rs", "resp"],
     ["Back-pressure (psi)", "bp", "resp"],
     ["Result", "result", "dec first"],
+    ["Rs floor", "floor", "dec"],
+    ["Next column and flow", "effnext", "dec"],
+    ["Predicted tR / BP / Rs", "effpred", "dec"],
     ["Chromatogram", "chrom", "dec"],
   ];
-  const groups = [["", "run", 1], ["Run conditions", "cond", 14], ["Responses", "resp first", 4], ["Decision", "dec first", 2]];
+  const groups = [["", "run", 1], ["Run conditions", "cond", 14], ["Responses", "resp first", 4], ["Decision", "dec first", 5]];
 
   const table = document.createElement("table");
   table.className = "hist-table";
@@ -776,6 +819,20 @@ function renderHistory() {
           note.textContent = r.calculated !== null ? "co-eluting; calculated " + r.calculated.toFixed(2) : "co-eluting";
           td.appendChild(note);
         }
+        continue;
+      }
+      if (key === "floor" || key === "effnext" || key === "effpred") {
+        const e = entry.result && entry.result.efficiency;
+        if (!e) { plain(""); continue; }
+        if (key === "floor") { plain(typeof e.floor === "number" ? e.floor.toFixed(2) + (e.floorSource === "spp" ? " (SPP)" : e.floorSource === "fpp" ? "" : " (typed)") : ""); continue; }
+        if (!e.next) { plain(""); continue; }
+        if (key === "effnext") {
+          const n = e.next;
+          plain((n.line ? n.line + " " : "") + n.L + "\u00d7" + n.ID + "\u00d7" + n.dp + (n.coreShell ? " core-shell" : "") + ", F " + Number(n.F).toFixed(2) + (e.chosen ? " (chosen)" : ""));
+          continue;
+        }
+        const pr2 = e.prediction;
+        plain(pr2 ? pr2.tR.toFixed(1) + " min / " + (pr2.BP === null ? "?" : Math.round(pr2.BP)) + " psi / " + pr2.Rs.toFixed(2) : "");
         continue;
       }
       if (key === "chrom") {
@@ -1202,14 +1259,6 @@ function computeOutcomes(run, specs, history, flags, specChangeNote) {
     return [pressureOutcome];
   }
 
-  if (specs.rsFloor >= specs.rsSpec) {
-    return [pressureOutcome, {
-      stage: "Error",
-      action: "Fix the Specification section.",
-      message: "The Rs floor must be lower than the Rs spec.",
-      specChangeNote: specChangeNote,
-    }];
-  }
   if (specs.currentPercentB === null) {
     return [pressureOutcome, {
       stage: "Error",
@@ -1228,11 +1277,20 @@ function computeOutcomes(run, specs, history, flags, specChangeNote) {
     if (ap.ok && ap.suggestion) intermediateFromGraph = ap.suggestion.percentB;
   } catch (err) { intermediateFromGraph = null; }
 
+  let efficiencyInput = null;
+  try {
+    efficiencyInput = {
+      reference: buildEfficiencyReference(run.conditions, run.summary, run.maxBackPressure),
+      columns: window.userColumns ? window.userColumns.read() : [],
+    };
+  } catch (err) { efficiencyInput = null; }
+
   const outcome = decide(run.summary, specsForDecision, history, {
     intermediatePercentB: intermediateFromGraph,
     currentConditions: run.conditions,
     userConfirmedEarlierTemperatures: flags.userConfirmedEarlierTemperatures,
     userChoseSolventChange: flags.userChoseSolventChange,
+    efficiency: efficiencyInput,
   });
 
   if (outcome && typeof outcome === "object") {
@@ -1333,7 +1391,7 @@ function autoCalculateRuns(runs) {
         const specs = readSpecs(run.conditions);
         const outcomes = computeOutcomes(run, specs, history, flags, null);
         const main = outcomes.filter(Boolean).slice(-1)[0];
-        result = { stage: main.stage || "", action: main.action || "", message: main.message || "", pass: !!main.pass, unsafe: !!main.unsafe, specs: readSpecsForDisplay() };
+        result = { stage: main.stage || "", action: main.action || "", message: main.message || "", pass: !!main.pass, unsafe: !!main.unsafe, specs: readSpecsForDisplay(), efficiency: efficiencyForHistory(main, run.fileName) };
       } catch (err) {
         result = { stage: "Could not calculate", action: "", message: err.message, pass: false, unsafe: false };
       }
@@ -1995,6 +2053,16 @@ function nextRunChanges(outcome) {
   if (!outcome || outcome.unsafe || outcome.stage === "Error" || outcome.stage === "No peaks") return null;
   const act = String(outcome.action || "");
   const sel = outcome.selectivity;
+  if (outcome.efficiency && !outcome.efficiency.selectivity && outcome.efficiencyRef) {
+    const pick = chosenEfficiencyOption(outcome, currentRunFileName) || outcome.efficiency.best;
+    const ref = outcome.efficiencyRef;
+    if (!pick) return null;
+    const col = pick.column;
+    if (col.L !== ref.L || col.ID !== ref.ID || col.dp !== ref.dp) ch.columnDimensions = col.L + "x" + col.ID + "x" + col.dp;
+    if (!pick.current && col.line && col.line !== ref.line) ch.line = col.line;
+    if (Math.abs(pick.F - ref.F) >= 0.005) ch.flowRate = pick.F.toFixed(2);
+    return Object.keys(ch).length ? ch : null;
+  }
   const chosen = readChosenOption(currentRunFileName);
   if (Array.isArray(outcome.options) && outcome.options.length) {
     const pick = chosen && typeof chosen.percentB === "number" ? chosen.percentB : (outcome.options.find(function (o) { return o.primary; }) || outcome.options[0]).percentB;
@@ -2034,6 +2102,25 @@ function nextRunFileName(ch) {
   if (ch.percentB !== undefined) {
     for (let i = modeIndex + 1; i < (dimIndex === -1 ? t.length : dimIndex); i++) {
       if (/^\d+(\.\d+)?$/.test(t[i])) { t[i] = ch.percentB; break; }
+    }
+  }
+  if (ch.flowRate !== undefined) {
+    let seen = 0;
+    for (let i = modeIndex + 1; i < (dimIndex === -1 ? t.length : dimIndex); i++) {
+      if (/^\d+(\.\d+)?$/.test(t[i])) { seen++; if (seen === 2) { t[i] = ch.flowRate; break; } }
+    }
+  }
+  if (ch.line && !ch.ligand && dimIndex !== -1 && currentConditions && currentConditions.ligand) {
+    // Same ligand, different column line: swap the line letter (P, U, F, R).
+    const old = String(currentConditions.ligand).toLowerCase();
+    const letter = window.monashColumns ? window.monashColumns.letter(ch.line) : "";
+    for (let i = modeIndex + 1; i < dimIndex; i++) {
+      if (t[i].toLowerCase().indexOf(old) === 0 && !/^\d/.test(t[i])) {
+        if (t[i].length > old.length) t[i] = t[i].slice(0, old.length) + letter;
+        else if (t[i + 1] !== undefined && i + 1 < dimIndex && /^[A-Za-z]{1,3}$/.test(t[i + 1])) t[i + 1] = letter || t[i + 1];
+        else if (letter) t[i] = t[i] + letter;
+        break;
+      }
     }
   }
   if (ch.temperature !== undefined && dimIndex !== -1 && t[dimIndex + 1] !== undefined) t[dimIndex + 1] = ch.temperature;
@@ -2081,6 +2168,7 @@ function buildNextRunConditionsCard(outcome) {
   const rows = [
     ["Column", [
       ["Ligand", ch.ligand !== undefined ? ch.ligand + (ch.line ? " (" + ch.line + ")" : "") : (c.ligand || ""), "ligand"],
+      ["Column line", ch.line !== undefined && ch.ligand === undefined ? ch.line + (window.hplcEfficiency && window.hplcEfficiency.isCoreShell(ch.line) ? " (core-shell)" : " (fully porous)") : "", "line"],
       ["Dimensions", dimsText, ch.columnDimensions !== undefined ? "columnDimensions" : null],
       ["Pore size / carbon load", ch.line ? "" : (facts ? facts.pore + " \u00c5, " + facts.load + (typeof facts.load === "number" ? "%" : "") : ""), null],
       ["At Monash", monashText, null],
@@ -2091,7 +2179,7 @@ function buildNextRunConditionsCard(outcome) {
       ["%B", ch.percentB !== undefined ? ch.percentB + "%" : (c.percentB ? c.percentB + "%" : ""), "percentB"],
       ["pH", c.pH || "", null],
       ["Mode", c.mode === "GRAD" ? "Gradient" : (c.mode ? "Isocratic" : ""), null],
-      ["Flow rate", c.flowRate ? c.flowRate + " mL/min" : "", null],
+      ["Flow rate", ch.flowRate !== undefined ? ch.flowRate + " mL/min" : (c.flowRate ? c.flowRate + " mL/min" : ""), "flowRate"],
     ]],
     ["Sample and detection", [
       ["Sample", c.sampleType || "", null],
@@ -2141,13 +2229,145 @@ function buildNextRunConditionsCard(outcome) {
     };
     addName("Data file name for the next run", fileName);
     const vol = String(c.sampleVolume || "").replace(/[a-z]+$/i, "");
-    const methodName = [c.mode || "ISO", ch.percentB !== undefined ? ch.percentB : c.percentB, c.flowRate, vol ? vol + "u" : "", ch.temperature !== undefined ? ch.temperature : c.temperature, c.wavelength].filter(function (x) { return x !== "" && x !== undefined && x !== null; }).join("-") + ".lcm";
+    const methodName = [c.mode || "ISO", ch.percentB !== undefined ? ch.percentB : c.percentB, ch.flowRate !== undefined ? ch.flowRate : c.flowRate, vol ? vol + "u" : "", ch.temperature !== undefined ? ch.temperature : c.temperature, c.wavelength].filter(function (x) { return x !== "" && x !== undefined && x !== null; }).join("-") + ".lcm";
     addName("Method file name for the next run", methodName);
     if (ch.ligand !== undefined) box.appendChild(mk("span", "note", "The ligand part of the names changes with the column you choose."));
+    if (outcome && outcome.efficiency) {
+      const pickNow = chosenEfficiencyOption(outcome, currentRunFileName) || outcome.efficiency.best;
+      if (pickNow) box.appendChild(mk("span", "note", "Predicted for this run: " + predictionText(pickNow) + "."));
+    }
     card.appendChild(box);
   }
   return card;
 }
+// ---------------------------------------------------------------------------
+// Efficiency card: the case, the Rs floor, the recommended column and flow with
+// predicted tR, BP and Rs, and a ranked list of the other options.
+// ---------------------------------------------------------------------------
+function buildEfficiencyCard(outcome) {
+  const eff = outcome && outcome.efficiency;
+  const ref = outcome && outcome.efficiencyRef;
+  if (!eff || !ref) return null;
+  const mk = function (tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+  const specs = readSpecsForDisplay();
+  const card = mk("div", "result-card eff-card");
+  card.appendChild(mk("h3", null, "Efficiency (N): case " + eff.caseNumber + " of 9"));
+  card.appendChild(mk("p", "eff-case", eff.caseLabel + ". Flow chart: " + eff.tableAction + "."));
+
+  // The floor.
+  const fl = outcome.floors;
+  if (fl) {
+    const box = mk("div", "eff-floor");
+    const cell = function (label, value, used) {
+      const d = mk("div", "eff-floor-cell" + (used ? " used" : ""));
+      d.appendChild(mk("span", "eff-floor-label", label));
+      d.appendChild(mk("strong", null, value));
+      if (used) d.appendChild(mk("span", "eff-floor-used", "used"));
+      return d;
+    };
+    box.appendChild(cell("Rs of this run", ref.Rs.toFixed(2), false));
+    box.appendChild(cell("Rs floor, fully porous", fl.fpp.toFixed(2), outcome.floorSource === "fpp"));
+    box.appendChild(cell("Rs floor, core-shell (SPP)", fl.spp.toFixed(2), outcome.floorSource === "spp"));
+    box.appendChild(cell("Rs spec", String(specs.rsSpec), false));
+    card.appendChild(box);
+    card.appendChild(mk("p", "note", fl.verdict + ". " + (outcome.floorSource === "spp"
+      ? "Your column list has a core-shell column with this ligand, so the SPP floor is used."
+      : "No core-shell column with this ligand is in your list, so the fully porous floor is used.") +
+      (fl.bpKnown ? "" : " This file has no pressure trace, so the floor only accounts for the tR headroom.")));
+  }
+
+  if (eff.selectivity) {
+    card.appendChild(mk("p", "eff-none", eff.caseNumber === 1
+      ? "No column in your list and no flow rate put tR, back pressure and Rs all in spec, so the method goes back to selectivity."
+      : "Rs is below the floor: no change of column or flow can bring it to spec. The method goes back to selectivity."));
+    return card;
+  }
+
+  const chosen = chosenEfficiencyOption(outcome, currentRunFileName);
+  const shown = chosen || eff.best;
+  if (shown) {
+    const rec = mk("div", "eff-rec");
+    rec.appendChild(mk("h4", null, chosen ? "Your chosen next run" : (eff.met ? "Method met" : "Recommended next run")));
+    rec.appendChild(mk("p", "eff-rec-col", (shown.current ? "Current column: " : "") + shown.description + (shown.inLab ? "" : " (to order)") + " at " + shown.F.toFixed(2) + " mL/min"));
+    const grid = mk("div", "eff-pred");
+    const pcell = function (label, value, ok, specText) {
+      const d = mk("div", "eff-pred-cell" + (ok === true ? " ok" : ok === false ? " bad" : ""));
+      d.appendChild(mk("span", "eff-floor-label", label));
+      d.appendChild(mk("strong", null, value));
+      if (specText) d.appendChild(mk("span", "eff-spec", specText));
+      return d;
+    };
+    grid.appendChild(pcell("Predicted tR last peak", shown.tR.toFixed(1) + " min", shown.tROk, "spec " + specs.tRSpec + " min or less"));
+    grid.appendChild(pcell("Predicted back pressure", shown.BP === null ? "unknown" : Math.round(shown.BP) + " psi", shown.bpOk, "limit " + specs.maxPressure + " psi"));
+    grid.appendChild(pcell("Predicted Rs", shown.Rs.toFixed(2), shown.rsOk, "spec " + specs.rsSpec));
+    grid.appendChild(pcell("Predicted N last peak", String(Math.round(shown.N)), null, "now " + Math.round(ref.N)));
+    rec.appendChild(grid);
+    if (shown.changes.length) {
+      const chips = mk("p", "eff-changes");
+      chips.appendChild(mk("span", "eff-floor-label", "Changes: "));
+      shown.changes.forEach(function (t) { chips.appendChild(mk("span", "nr-chip", t)); });
+      rec.appendChild(chips);
+    } else {
+      rec.appendChild(mk("p", "note", "No change: the current column and flow already meet the specs."));
+    }
+    if (!eff.reachesSpec && !chosen) rec.appendChild(mk("p", "eff-none", "No column in your list reaches the Rs spec with the levers this case allows. This is the closest; the table below lists anything else that meets all three specs."));
+    if (shown.column.ID !== ref.ID) rec.appendChild(mk("p", "note", "A different internal diameter gives the same plates at the same linear velocity; it is chosen here for the particle size it comes with, and it uses less solvent."));
+    card.appendChild(rec);
+  }
+
+  // Ranked list of all options.
+  const rows = [];
+  if (eff.best) rows.push({ o: eff.best, group: "Allowed by this case" });
+  (eff.inCase || []).forEach(function (o) { rows.push({ o: o, group: "Allowed by this case" }); });
+  (eff.others || []).forEach(function (o) { rows.push({ o: o, group: "Also meets all three specs (uses another lever)" }); });
+  if (rows.length > 1) {
+    const det = mk("details", "eff-options");
+    det.open = false;
+    det.appendChild(mk("summary", null, "Other options, ranked (" + (rows.length - 1) + ")"));
+    const table = mk("table", "options-table eff-table");
+    const head = table.createTHead().insertRow();
+    ["Column", "F (mL/min)", "tR (min)", "BP (psi)", "Rs", "Changes", ""].forEach(function (h) { head.appendChild(mk("th", null, h)); });
+    const body = table.createTBody();
+    let lastGroup = null;
+    const cap = 25;
+    rows.slice(0, cap).forEach(function (r, i) {
+      if (r.group !== lastGroup) {
+        const g = body.insertRow();
+        const c = g.insertCell(); c.colSpan = 7; c.className = "eff-group"; c.textContent = r.group;
+        lastGroup = r.group;
+      }
+      const o = r.o;
+      const tr = body.insertRow();
+      if (i === 0 && !chosen) tr.className = "primary-option";
+      if (shown && effOptionKey(o) === effOptionKey(shown)) tr.classList.add("chosen-option");
+      const c0 = tr.insertCell(); c0.textContent = (o.current ? "Current: " : "") + o.description + (o.inLab ? "" : " (to order)");
+      if (i === 0) { const b = mk("span", "primary-badge", "best"); c0.appendChild(b); }
+      tr.insertCell().textContent = o.F.toFixed(2);
+      const ct = tr.insertCell(); ct.textContent = o.tR.toFixed(1); if (!o.tROk) ct.className = "eff-badval";
+      const cb = tr.insertCell(); cb.textContent = o.BP === null ? "?" : String(Math.round(o.BP)); if (o.bpOk === false) cb.className = "eff-badval";
+      const cr = tr.insertCell(); cr.textContent = o.Rs.toFixed(2); if (!o.rsOk) cr.className = "eff-badval";
+      tr.insertCell().textContent = o.changes.join("; ") || "none";
+      const pc = tr.insertCell();
+      const btn = mk("button", i === 0 ? "" : "secondary", shown && effOptionKey(o) === effOptionKey(shown) ? "Chosen" : "Use this");
+      btn.type = "button";
+      btn.addEventListener("click", function () {
+        saveChosenEfficiency(currentRunFileName, i === 0 ? null : effOptionKey(o));
+        renderResults(lastRenderedOutcomes, { stay: true });
+      });
+      pc.appendChild(btn);
+    });
+    det.appendChild(table);
+    if (rows.length > cap) det.appendChild(mk("p", "note", "Showing the first " + cap + " of " + rows.length + "."));
+    card.appendChild(det);
+  }
+
+  if (fl && fl.optimum && Number.isFinite(fl.optimum.L)) {
+    card.appendChild(mk("p", "note", "Awesome Calculator optimum for this run (any column geometry): PS " + fl.optimum.ps.toFixed(2) + " µm, L " + Math.round(fl.optimum.L) + " mm at " + fl.optimum.F.toFixed(2) + " mL/min reaches Nmax " + Math.round(outcome.floorSource === "spp" ? fl.nMaxSpp : fl.nMax) + " plates. " + eff.columnsChecked + " column" + (eff.columnsChecked === 1 ? "" : "s") + " with this ligand were checked from your list."));
+  }
+  card.appendChild(mk("p", "note", "Predictions use the Awesome Calculator equations from this run: tR and t0 scale with F, L and ID²; back pressure with L, F, 1/PS² and 1/ID²; N from the Van Deemter plate height H = (1.5·PS + 3/u + 0.15·PS²·u)/SPP; Rs with √N."));
+  return card;
+}
+
 let lastRenderedOutcomes = null;
 let chosenLigandColumn = null;
 function refreshNextRunCard() {
@@ -2164,6 +2384,10 @@ function renderResults(outcomes, options) {
   lastRenderedOutcomes = outcomes;
   for (const outcome of outcomes) {
     cards.push(buildResultCard(outcome));
+    if (outcome && outcome.efficiency) {
+      const effCard = buildEfficiencyCard(outcome);
+      if (effCard) cards.push(effCard);
+    }
     if (outcome && outcome === outcomes.filter(Boolean).slice(-1)[0]) {
       const nextCard = buildNextRunConditionsCard(outcome);
       if (nextCard) cards.push(nextCard);
@@ -2482,6 +2706,17 @@ renderFit();
 renderAllPeaks();
 renderEquipment();
 wireInstrumentHotspots();
+if (window.userColumns) {
+  window.userColumns.render(document.getElementById("columns-container"));
+  // A change to the column list changes the efficiency options, so decide again.
+  window.userColumns.onChange(function () {
+    if (readHistory().length) autoCalculateRuns(runRecordsFromHistory());
+    if (currentSummary) {
+      autoCalculating = true;
+      try { handleCalculate(); } finally { autoCalculating = false; }
+    }
+  });
+}
 selectTab("flowchart");
 showSub("spec");
 

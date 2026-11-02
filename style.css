@@ -906,3 +906,41 @@ button.danger-outline:hover:not(:disabled) { background: var(--error); color: #f
 .mc-none { color: var(--muted); font-size: .85rem; padding-top: .3rem; }
 .mc-more { flex: 1 1 100%; margin-left: 5.3rem; font-size: .85rem; }
 .mc-more summary { cursor: pointer; color: var(--muted); }
+/* ---------- Your columns (specification) ---------- */
+.cols-heading { margin: 1.75rem 0 .25rem; font-size: 1.05rem; }
+.cols-filter { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin: .5rem 0; }
+.cols-filter select { margin-left: .35rem; }
+.cols-table-wrap { max-height: 18rem; overflow: auto; border: 1px solid var(--line); border-radius: .5rem; background: var(--surface); }
+.cols-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.cols-table th { position: sticky; top: 0; background: #eef3f5; text-align: left; padding: .35rem .5rem; font-weight: 600; }
+.cols-table td { padding: .3rem .5rem; border-top: 1px solid var(--line); }
+.cols-table tr.col-off td { color: var(--muted); text-decoration: line-through; }
+.cols-table tr.col-off td:first-child { text-decoration: none; }
+.cols-add { margin: .75rem 0; }
+.cols-add summary { cursor: pointer; color: var(--accent-dark); font-weight: 600; }
+.cols-add-form { display: flex; flex-wrap: wrap; gap: .5rem .75rem; align-items: flex-end; margin-top: .5rem; }
+.cols-add-field { display: flex; flex-direction: column; font-size: .8rem; color: var(--muted); }
+.cols-add-field input { width: 6rem; }
+/* ---------- Efficiency card ---------- */
+.eff-card .eff-case { margin: 0 0 .75rem; color: var(--muted); }
+.eff-floor, .eff-pred { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: .5rem; margin: .5rem 0; }
+.eff-floor-cell, .eff-pred-cell { border: 1px solid var(--line); border-radius: .5rem; padding: .5rem .65rem; background: var(--surface); display: flex; flex-direction: column; gap: .1rem; }
+.eff-floor-cell.used { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.eff-floor-label { font-size: .75rem; color: var(--muted); }
+.eff-floor-cell strong, .eff-pred-cell strong { font-size: 1.15rem; }
+.eff-floor-used { font-size: .7rem; color: var(--accent-dark); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.eff-pred-cell.ok { border-color: var(--pass-border); background: var(--pass-bg); }
+.eff-pred-cell.bad { border-color: var(--error); background: #fbece6; }
+.eff-spec { font-size: .72rem; color: var(--muted); }
+.eff-rec { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--line); }
+.eff-rec h4 { margin: 0 0 .25rem; }
+.eff-rec-col { margin: 0 0 .5rem; font-weight: 600; }
+.eff-changes { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; margin: .5rem 0 0; }
+.eff-changes .nr-chip { margin-left: 0; }
+.eff-none { color: var(--error); font-weight: 600; }
+.eff-options { margin-top: 1rem; }
+.eff-options summary { cursor: pointer; font-weight: 600; color: var(--accent-dark); }
+.eff-table { font-size: .82rem; }
+.eff-table td.eff-group { background: #eef3f5; font-weight: 600; color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .03em; }
+.eff-table td.eff-badval { color: var(--error); font-weight: 600; }
+.options-table.eff-table { display: block; overflow-x: auto; }
