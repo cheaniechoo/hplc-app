@@ -55,7 +55,17 @@
   function readHistory() {
     try { const h = JSON.parse(localStorage.getItem(KEY) || "[]"); return Array.isArray(h) ? h : []; } catch (err) { return []; }
   }
-  function writeHistory(h) { try { localStorage.setItem(KEY, JSON.stringify(h)); } catch (err) { /* ignore */ } }
+  // Saves the history. If the browser's storage is full, the runs are kept without their
+  // chromatograms rather than lost, and the user is told.
+  let storageWarned = false;
+  function writeHistory(h) {
+    try { localStorage.setItem(KEY, JSON.stringify(h)); return true; } catch (err) { /* fall through */ }
+    try {
+      localStorage.setItem(KEY, JSON.stringify(h.map(function (r) { const c = Object.assign({}, r); delete c.chrom; return c; })));
+      if (!storageWarned) { storageWarned = true; status("Your browser's storage is full, so the runs were saved without their chromatograms. Clear old runs (isocratic or gradient history) and load the files again to keep the chromatograms.", true); }
+      return false;
+    } catch (err2) { return false; }
+  }
   function clearHistory() { try { localStorage.removeItem(KEY); } catch (err) { /* ignore */ } currentFile = null; renderAll(); }
 
   let currentFile = null;
@@ -525,7 +535,7 @@
           case "action": put(d.action || ""); td.classList.add("hist-result", gStageClass(d)); break;
           case "gsnext": put(d.next ? d.next.GS.toFixed(4) : ""); break;
           case "chrom": {
-            if (!r.chrom) { td.textContent = "Not stored"; td.className = "hist-pending"; break; }
+            if (!r.chrom) { td.textContent = "Not stored: load the file again"; td.className = "hist-pending"; td.title = "This run was saved before chromatograms were kept, or the browser's storage was full. Upload the file again to store its chromatogram."; break; }
             const open = shownChrom.has(r.fileName);
             const btn = mk("button", "secondary chrom-toggle", open ? "Hide" : "Show");
             btn.type = "button";
