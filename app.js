@@ -268,13 +268,24 @@ function chosenEfficiencyOption(main, fileName) {
   if (!saved) return null;
   return allEfficiencyOptions(main).find(function (o) { return effOptionKey(o) === saved; }) || null;
 }
+// chosenEff is the option in use (null = the recommended one); effPicked remembers the
+// user's own pick, so they can switch back and forth between it and the recommendation.
 function saveChosenEfficiency(fileName, key) {
   if (!fileName) return;
   const h = readHistory();
   for (let i = h.length - 1; i >= 0; i--) {
-    if (h[i].fileName === fileName) { h[i].chosenEff = key; writeHistory(h); break; }
+    if (h[i].fileName === fileName) { h[i].chosenEff = key; if (key) h[i].effPicked = key; writeHistory(h); break; }
   }
 }
+function pickedEfficiencyOption(main, fileName) {
+  if (!fileName || !main || !main.efficiency) return null;
+  const h = readHistory();
+  let saved = null;
+  for (let i = h.length - 1; i >= 0; i--) if (h[i].fileName === fileName) { saved = h[i].effPicked || null; break; }
+  if (!saved) return null;
+  return allEfficiencyOptions(main).find(function (o) { return effOptionKey(o) === saved; }) || null;
+}
+let effListOpen = false;
 function saveChosenOption(fileName, choice) {
   if (!fileName) return;
   const h = readHistory();
@@ -2342,6 +2353,30 @@ function buildEfficiencyCard(outcome) {
 
   const chosen = chosenEfficiencyOption(outcome, currentRunFileName);
   const shown = chosen || eff.best;
+  const picked = pickedEfficiencyOption(outcome, currentRunFileName);
+  if (eff.best && picked && effOptionKey(picked) !== effOptionKey(eff.best)) {
+    // Switch between the recommended option and the user's own pick.
+    const sw = mk("div", "eff-switch");
+    sw.setAttribute("role", "group");
+    sw.setAttribute("aria-label", "Which option to use for the next run");
+    const opt = function (label, o, key) {
+      const on = effOptionKey(o) === effOptionKey(shown);
+      const btn = mk("button", "eff-switch-btn" + (on ? " on" : ""));
+      btn.type = "button";
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      btn.appendChild(mk("span", "eff-switch-label", label));
+      btn.appendChild(mk("span", "eff-switch-desc", o.description + " at " + o.F.toFixed(2) + " mL/min"));
+      btn.addEventListener("click", function () {
+        if (on) return;
+        saveChosenEfficiency(currentRunFileName, key);
+        renderResults(lastRenderedOutcomes, { stay: true });
+      });
+      return btn;
+    };
+    sw.appendChild(opt("Recommended", eff.best, null));
+    sw.appendChild(opt("Your choice", picked, effOptionKey(picked)));
+    card.appendChild(sw);
+  }
   if (shown) {
     const rec = mk("div", "eff-rec");
     rec.appendChild(mk("h4", null, chosen ? "Your chosen next run" : (eff.met ? "Method met" : "Recommended next run")));
@@ -2379,7 +2414,8 @@ function buildEfficiencyCard(outcome) {
   (eff.others || []).forEach(function (o) { rows.push({ o: o, group: "Also meets all three specs (uses another lever)" }); });
   if (rows.length > 1) {
     const det = mk("details", "eff-options");
-    det.open = false;
+    det.open = effListOpen;
+    det.addEventListener("toggle", function () { effListOpen = det.open; });
     det.appendChild(mk("summary", null, "Other options, ranked (" + (rows.length - 1) + ")"));
     const table = mk("table", "options-table eff-table");
     const head = table.createTHead().insertRow();
