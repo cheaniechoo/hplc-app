@@ -744,8 +744,25 @@ button.danger-outline:hover:not(:disabled) { background: var(--error); color: #f
 /* Result cards: action first, explanation in a toggle */
 .result-card .card-action { font-size: 1.25rem; font-weight: 700; }
 .more-details { margin-top: .6rem; }
-.more-details > summary { cursor: pointer; color: var(--muted, #566672); font-size: .9rem; font-weight: 600; }
-.more-details[open] > summary { margin-bottom: .4rem; }
+/* "Why, and details": a highlighted pill so it invites a click */
+.more-details > summary {
+  display: inline-flex; align-items: center; gap: .45rem;
+  cursor: pointer; list-style: none;
+  padding: .35rem .85rem; border-radius: 999px;
+  background: #fff4d6; border: 1px solid #e2b13c; color: #6b4a00;
+  font-size: .9rem; font-weight: 650;
+  transition: background .15s ease, box-shadow .15s ease;
+}
+.more-details > summary::-webkit-details-marker { display: none; }
+.more-details > summary::before {
+  content: ""; width: .45rem; height: .45rem;
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg); transition: transform .15s ease;
+}
+.more-details[open] > summary::before { transform: rotate(45deg); }
+.more-details > summary:hover { background: #ffe9a8; box-shadow: 0 1px 4px rgba(107, 74, 0, .18); }
+.more-details > summary:focus-visible { outline: 2px solid #b5830f; outline-offset: 2px; }
+.more-details[open] > summary { margin-bottom: .5rem; background: #ffe9a8; }
 
 /* Run history table, laid out like the course template */
 #history-container .hist-table { font-size: .8rem; width: max-content; min-width: 100%; border-collapse: collapse; }
