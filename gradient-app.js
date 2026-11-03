@@ -386,5 +386,5 @@
   renderAll();
   showGSub("spec");
 
-  window.gradientApp = { handleFiles: handleFiles, clear: function () { clearHistory(); resetSpecs(); decideAll(); renderAll(); showGSub("spec"); }, show: showGSub };
+  window.gradientApp = { current: function () { return readHistory().find(function (r) { return r.fileName === currentFile; }) || null; }, handleFiles: handleFiles, clear: function () { clearHistory(); resetSpecs(); decideAll(); renderAll(); showGSub("spec"); }, show: showGSub };
 })();

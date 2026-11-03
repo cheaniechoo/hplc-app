@@ -16,6 +16,7 @@
 
 const MAIN_TABS = {
   start: ["tab-start", "panel-start"],
+  guide: ["tab-guide", "panel-guide"],
   flowchart: ["tab-flowchart", "panel-flowchart"],
   gradient: ["tab-gradient", "panel-gradient"],
   history: ["tab-history", "panel-history"],
@@ -2925,6 +2926,10 @@ showSub("spec");
 // ---------------------------------------------------------------------------
 // Start page: choose isocratic or gradient; Worked and Clear
 // ---------------------------------------------------------------------------
+// For the Flow chart guide: the decision shown for the current isocratic run.
+window.isoCurrentOutcome = function () { return summaryOutcome; };
+window.isoCurrentFile = function () { return currentRunFileName; };
+
 function appClearAll() {
   handleClearHistory();
   currentSummary = null; currentMaxBackPressure = null; currentConditions = null; currentRunFileName = null; lastRunRecord = null; lastSpecsUsed = null;

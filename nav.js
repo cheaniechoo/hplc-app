@@ -2,6 +2,7 @@
 // The items are built from the step buttons already on each page, so the two always match.
 (function () {
   const groups = [
+    { group: "guide", tab: "tab-guide", selector: ".fsub-button", dataKey: "fsub" },
     { group: "flowchart", tab: "tab-flowchart", selector: ".sub-button", dataKey: "sub" },
     { group: "history", tab: "tab-history", selector: ".hist-sub-button", dataKey: "histSub" },
     { group: "gradient", tab: "tab-gradient", selector: ".gsub-button", dataKey: "gsub" },

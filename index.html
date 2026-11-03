@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>HPLC method development assistant</title>
-  <link rel="stylesheet" href="style.css?v=20261103-1751">
+  <link rel="stylesheet" href="style.css?v=20261103-1820">
 </head>
 <body>
 
@@ -29,6 +29,7 @@
 
   <nav class="tab-bar" aria-label="Main sections">
     <div class="nav-group" data-group="start"><button id="tab-start" class="tab-button active" type="button" aria-controls="panel-start" aria-selected="true">Start</button></div>
+    <div class="nav-group" data-group="guide"><button id="tab-guide" class="tab-button" type="button" aria-controls="panel-guide" aria-selected="false">Flow chart guide</button></div>
     <div class="nav-group" data-group="flowchart"><button id="tab-flowchart" class="tab-button" type="button" aria-controls="panel-flowchart" aria-selected="false">Isocratic dashboard</button></div>
     <div class="nav-group" data-group="history"><button id="tab-history" class="tab-button" type="button" aria-controls="panel-history" aria-selected="false">Isocratic run history</button></div>
     <div class="nav-group" data-group="gradient"><button id="tab-gradient" class="tab-button" type="button" aria-controls="panel-gradient" aria-selected="false">Gradient dashboard</button></div>
@@ -61,6 +62,32 @@
         <button type="button" id="btn-clear" class="secondary">Clear</button>
       </div>
       <p id="start-status" class="hint" role="status"></p>
+    </section>
+  </main>
+
+  <main id="panel-guide" class="tab-panel" role="tabpanel" aria-labelledby="tab-guide" hidden>
+    <nav class="sub-bar" aria-label="Flow chart guide sections"><button type="button" class="fsub-button" data-fsub="flow">1  Flow chart</button><button type="button" class="fsub-button" data-fsub="stages">2  Stages explained</button><button type="button" class="fsub-button" data-fsub="cases">3  Case tables</button><button type="button" class="fsub-button" data-fsub="formulas">4  Formula sheet</button><button type="button" class="fsub-button" data-fsub="glossary">5  Glossary</button></nav>
+    <section data-fsub-panel="flow" aria-labelledby="fc-flow-heading">
+      <h2 id="fc-flow-heading">The method development flow chart</h2>
+      <div id="fc-flow"></div>
+    </section>
+    <section data-fsub-panel="stages" aria-labelledby="fc-stages-heading">
+      <h2 id="fc-stages-heading">Every stage explained</h2>
+      <p class="hint">What each stage does, how the app decides, and the equations it uses. Open a stage to read it.</p>
+      <div id="fc-stages"></div>
+    </section>
+    <section data-fsub-panel="cases" aria-labelledby="fc-cases-heading">
+      <h2 id="fc-cases-heading">Case tables</h2>
+      <div id="fc-cases"></div>
+    </section>
+    <section data-fsub-panel="formulas" aria-labelledby="fc-formulas-heading">
+      <h2 id="fc-formulas-heading">Formula sheet</h2>
+      <p class="hint">Every equation the app uses, from the course material and the Awesome Calculator. <button type="button" id="fc-print" class="secondary">Print this sheet</button></p>
+      <div id="fc-formulas"></div>
+    </section>
+    <section data-fsub-panel="glossary" aria-labelledby="fc-glossary-heading">
+      <h2 id="fc-glossary-heading">Glossary</h2>
+      <div id="fc-glossary"></div>
     </section>
   </main>
 
@@ -447,19 +474,20 @@
     </section>
   </main>
 
-  <script src="equipment-data.js?v=20261103-1751"></script>
-  <script src="efficiency.js?v=20261103-1751"></script>
-  <script src="logic.js?v=20261103-1751"></script>
-  <script src="monash-columns.js?v=20261103-1751"></script>
-  <script src="user-columns.js?v=20261103-1751"></script>
-  <script src="module-howto.js?v=20261103-1751"></script>
-  <script src="chromatogram.js?v=20261103-1751"></script>
-  <script src="logk-chart.js?v=20261103-1751"></script>
-  <script src="gradient.js?v=20261103-1751"></script>
-  <script src="app.js?v=20261103-1751"></script>
-  <script src="gradient-app.js?v=20261103-1751"></script>
-  <script src="ligand-structures.js?v=20261103-1751"></script>
-  <script src="equipment-interactive.js?v=20261103-1751"></script>
-  <script src="nav.js?v=20261103-1751"></script>
+  <script src="equipment-data.js?v=20261103-1820"></script>
+  <script src="efficiency.js?v=20261103-1820"></script>
+  <script src="logic.js?v=20261103-1820"></script>
+  <script src="monash-columns.js?v=20261103-1820"></script>
+  <script src="user-columns.js?v=20261103-1820"></script>
+  <script src="module-howto.js?v=20261103-1820"></script>
+  <script src="chromatogram.js?v=20261103-1820"></script>
+  <script src="logk-chart.js?v=20261103-1820"></script>
+  <script src="gradient.js?v=20261103-1820"></script>
+  <script src="app.js?v=20261103-1820"></script>
+  <script src="gradient-app.js?v=20261103-1820"></script>
+  <script src="flowchart.js?v=20261103-1820"></script>
+  <script src="ligand-structures.js?v=20261103-1820"></script>
+  <script src="equipment-interactive.js?v=20261103-1820"></script>
+  <script src="nav.js?v=20261103-1820"></script>
 </body>
 </html>
