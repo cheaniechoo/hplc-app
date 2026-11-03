@@ -1269,10 +1269,22 @@ function decide(summary, specs, history, options) {
         const trClass = classifyRetentionTime(currentTr, specs.tRSpec);
         if (trClass === ">") {
             let previousPercentB = null;
+            let previousEntry = null;
             for (const e of (history || [])) {
                 if (e && typeof e.percentB === "number" && currentPercentB !== null && e.percentB > currentPercentB) {
                     const sameSolvent = !e.solvent || !conditions || !conditions.solvent || normaliseSolvent(e.solvent) === normaliseSolvent(conditions.solvent);
-                    if (sameSolvent && (previousPercentB === null || e.percentB < previousPercentB)) previousPercentB = e.percentB;
+                    if (sameSolvent && (previousPercentB === null || e.percentB < previousPercentB)) { previousPercentB = e.percentB; previousEntry = e; }
+                }
+            }
+            // The alternative from the flow chart ("OR an intermediate %B"): the %B that puts the last
+            // peak exactly on the tR spec, by the 10-points-doubles-tR rule: %B = %B now + 10 x log2(tR / tR spec).
+            let intermediateAtSpec = null;
+            if (currentPercentB !== null && currentTr > 0 && specs.tRSpec > 0) {
+                const raw = currentPercentB + 10 * Math.log2(currentTr / specs.tRSpec);
+                // Rounded up to 0.1 so the predicted last peak stays at or just under the spec.
+                const pb = Math.ceil(raw * 10 - 1e-9) / 10;
+                if (pb > currentPercentB && (previousPercentB === null || pb < previousPercentB)) {
+                    intermediateAtSpec = { percentB: pb, raw: raw, predictedTr: predictTrAtPercentB(currentTr, currentPercentB, pb) };
                 }
             }
             let previousEstimated = false;
@@ -1285,6 +1297,10 @@ function decide(summary, specs, history, options) {
                 pass: false,
                 previousPercentB: previousPercentB,
                 previousPercentBEstimated: previousEstimated,
+                previousRun: previousEntry && typeof previousEntry.trLastPeak === "number" ? { fileName: previousEntry.fileName, percentB: previousEntry.percentB, trLastPeak: previousEntry.trLastPeak, temperature: previousEntry.temperature || "amb" } : null,
+                currentTr: currentTr,
+                currentTemperature: conditions ? conditions.temperature : null,
+                intermediateAtSpec: intermediateAtSpec,
                 action: "Return %B to its previous value, then move on to the Selectivity stage.",
                 message: "Found " + summary.numPeaks + " of the required " + specs.targetPeaks + " peaks, but the last peak's tR (" + currentTr.toFixed(2) + " min) is already over the tR spec of " + specs.tRSpec + " min. Decrementing %B further would only push tR higher." + (currentPercentB !== null ? " The current %B is " + currentPercentB + "%." : "") + (previousEstimated ? " The earlier run is not in the history, so the next run keeps the %B of this run (" + previousPercentB + "%)." : ""),
                 selectivity: nextSelectivityStep(history, summary, specs, "peak-count", {

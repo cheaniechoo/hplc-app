@@ -233,7 +233,7 @@ function saveResultToHistory(outcomes) {
   const main = outcomes.filter(Boolean).slice(-1)[0];
   if (!main) return;
   storeResultInHistory(currentRunFileName, {
-    stage: main.stage || "", action: main.action || "", message: main.message || "",
+    stage: main.stage || "", action: retentionAltActive(main) ? retentionAltAction(main) : (main.action || ""), message: main.message || "",
     pass: !!main.pass, unsafe: !!main.unsafe, specs: readSpecsForDisplay(),
     efficiency: efficiencyForHistory(main, currentRunFileName),
   });
@@ -286,6 +286,26 @@ function pickedEfficiencyOption(main, fileName) {
   return allEfficiencyOptions(main).find(function (o) { return effOptionKey(o) === saved; }) || null;
 }
 let effListOpen = false;
+
+// Retention -> Selectivity with tR over spec: the user can switch between the recommendation
+// (previous %B + selectivity change) and the intermediate %B that puts tR on spec.
+function readRetentionAlt(fileName) {
+  if (!fileName) return false;
+  const h = readHistory();
+  for (let i = h.length - 1; i >= 0; i--) if (h[i].fileName === fileName) return h[i].retAlt === true;
+  return false;
+}
+function saveRetentionAlt(fileName, on) {
+  if (!fileName) return;
+  const h = readHistory();
+  for (let i = h.length - 1; i >= 0; i--) if (h[i].fileName === fileName) { h[i].retAlt = !!on; writeHistory(h); break; }
+}
+function retentionAltActive(outcome) {
+  return !!(outcome && outcome.intermediateAtSpec && readRetentionAlt(currentRunFileName));
+}
+function retentionAltAction(outcome) {
+  return "Run " + outcome.intermediateAtSpec.percentB + "% B at the same temperature (intermediate %B), then compare.";
+}
 function saveChosenOption(fileName, choice) {
   if (!fileName) return;
   const h = readHistory();
@@ -1973,6 +1993,76 @@ function buildOtherOptionsCard(selectivity) {
   return card;
 }
 
+// The switch (recommended / intermediate %B) and the "why not the current %B" explanation.
+let retWhyOpen = false;
+function buildRetentionAltBlock(outcome) {
+  const mk = function (tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+  const alt = outcome.intermediateAtSpec;
+  const altOn = readRetentionAlt(currentRunFileName);
+  const specs = readSpecsForDisplay();
+  const sel = outcome.selectivity || {};
+  const curB = Number(specs && currentConditions ? currentConditions.percentB : NaN);
+  const curTr = outcome.currentTr;
+  const curTemp = outcome.currentTemperature || "amb";
+  const prevB = outcome.previousPercentB;
+  const isTemp = sel.step === "temperature-40" || sel.step === "temperature-60";
+  const targetTemp = isTemp ? sel.value : null;
+  const tempText = function (t) { return !t || String(t).toLowerCase() === "amb" ? "ambient (25 \u00b0C)" : String(t).replace(/^T/i, "") + " \u00b0C"; };
+  const wrap = mk("div", "ret-alt");
+
+  // Switch between the two next runs.
+  const sw = mk("div", "eff-switch");
+  sw.setAttribute("role", "group");
+  sw.setAttribute("aria-label", "Which next run to use");
+  const opt = function (label, desc, on, value) {
+    const b = mk("button", "eff-switch-btn" + (on ? " on" : ""));
+    b.type = "button";
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+    b.appendChild(mk("span", "eff-switch-label", label));
+    b.appendChild(mk("span", "eff-switch-desc", desc));
+    b.addEventListener("click", function () {
+      if (on) return;
+      saveRetentionAlt(currentRunFileName, value);
+      renderResults(lastRenderedOutcomes, { stay: true });
+    });
+    return b;
+  };
+  sw.appendChild(opt("Recommended", String(outcome.action || "").replace(/\.$/, ""), !altOn, false));
+  sw.appendChild(opt("Or: intermediate %B", alt.percentB + "% B at " + tempText(curTemp) + ", last peak near " + alt.predictedTr.toFixed(1) + " min", altOn, true));
+  wrap.appendChild(sw);
+  wrap.appendChild(mk("p", "note", "The flow chart allows either: change selectivity, OR an intermediate %B that keeps the last peak inside the spec. Switching changes the conditions for the next run below."));
+
+  // Why the previous %B and not the current one.
+  const why = mk("details", "ret-why");
+  why.open = retWhyOpen;
+  why.addEventListener("toggle", function () { retWhyOpen = why.open; });
+  why.appendChild(mk("summary", null, "Why " + (prevB !== null && prevB !== undefined ? prevB : "the previous") + "% B and not " + (Number.isFinite(curB) ? curB : "the current") + "% B" + (targetTemp ? " at " + tempText(targetTemp) : "") + "?"));
+  const list = mk("ol", "ret-why-steps");
+  const li = function (text) { list.appendChild(mk("li", null, text)); };
+  li("At " + curB + "% B the last peak is at " + curTr.toFixed(2) + " min, over the tR spec of " + specs.tRSpec + " min. Retention is past its limit: a lower %B would only push it later.");
+  if (targetTemp) {
+    const atCur = predictTrAtTemperature(curTr, curTemp, targetTemp);
+    const dT = temperatureToNumber(targetTemp) - temperatureToNumber(curTemp);
+    if (atCur !== null) {
+      li("Raising the temperature shortens retention by about " + (TR_TEMPERATURE_COEFFICIENT * 100).toFixed(1) + "% per \u00b0C. At " + curB + "% B and " + tempText(targetTemp) + ": tR \u2248 " + curTr.toFixed(2) + " \u00d7 (1 \u2212 " + TR_TEMPERATURE_COEFFICIENT + " \u00d7 " + dT + ") = " + atCur.toFixed(2) + " min, " + (atCur > specs.tRSpec ? "still over the " + specs.tRSpec + " min spec. Even if the hidden peak appeared, the run would fail on time." : "only just inside the spec, with no room left for the peaks to move."));
+    }
+    const pr = outcome.previousRun;
+    if (pr) {
+      const atPrev = predictTrAtTemperature(pr.trLastPeak, pr.temperature, targetTemp);
+      li("At " + pr.percentB + "% B (your run " + pr.fileName + ") the last peak was at " + pr.trLastPeak.toFixed(2) + " min. At " + tempText(targetTemp) + ": tR \u2248 " + pr.trLastPeak.toFixed(2) + " \u00d7 (1 \u2212 " + TR_TEMPERATURE_COEFFICIENT + " \u00d7 " + (temperatureToNumber(targetTemp) - temperatureToNumber(pr.temperature)) + ") = " + (atPrev !== null ? atPrev.toFixed(2) : "?") + " min, well inside the spec.");
+    } else if (outcome.previousPercentBEstimated) {
+      li("No earlier run at a higher %B is loaded, so the next run keeps this run's %B. Load the earlier retention run to go back to its %B.");
+    }
+  } else {
+    li("The selectivity change (" + String(sel.action || "the next selectivity step").replace(/\.$/, "").toLowerCase() + ") is made at the last %B whose last peak was inside the spec, so the run is judged on peak count and spacing, not on time.");
+  }
+  li("So the selectivity change is made at " + (prevB !== null && prevB !== undefined ? prevB + "% B" : "the previous %B") + ", the last %B with the last peak inside the spec. The run is then judged on whether the hidden peak appears, not on time.");
+  li("The intermediate option: the %B that puts the last peak exactly on the spec, from this run, with a 10-point %B drop doubling tR: %B = " + curB + " + 10 \u00d7 log\u2082(" + curTr.toFixed(2) + " / " + specs.tRSpec + ") = " + alt.raw.toFixed(2) + ", rounded up to " + alt.percentB + "% B so the last peak stays just inside the spec. It stays at the current temperature and tests whether a little less retention reveals the 7th peak inside the spec.");
+  why.appendChild(list);
+  wrap.appendChild(why);
+  return wrap;
+}
+
 function buildResultCard(outcome) {
   const card = document.createElement("div");
   card.className = "result-card" + (outcome.pass ? " pass" : "") + (outcome.unsafe ? " unsafe" : "");
@@ -1984,8 +2074,13 @@ function buildResultCard(outcome) {
   if (outcome.action) {
     const actionBlock = document.createElement("p");
     actionBlock.className = "card-action";
-    actionBlock.textContent = outcome.action;
+    actionBlock.textContent = retentionAltActive(outcome) ? retentionAltAction(outcome) : outcome.action;
     card.appendChild(actionBlock);
+  }
+
+  if (outcome.intermediateAtSpec && outcome.stage === "Retention -> Selectivity") {
+    const block = buildRetentionAltBlock(outcome);
+    if (block) card.appendChild(block);
   }
 
   const more = document.createElement("details");
@@ -2140,6 +2235,10 @@ function nextRunChanges(outcome) {
     if (!pick.current && col.line && col.line !== ref.line) ch.line = col.line;
     if (Math.abs(pick.F - ref.F) >= 0.005) ch.flowRate = pick.F.toFixed(2);
     return Object.keys(ch).length ? ch : null;
+  }
+  if (retentionAltActive(outcome)) {
+    ch.percentB = String(outcome.intermediateAtSpec.percentB);
+    return ch;
   }
   const chosen = readChosenOption(currentRunFileName);
   if (Array.isArray(outcome.options) && outcome.options.length) {
@@ -2932,7 +3031,7 @@ function renderRunSummary() {
     dec.appendChild(st);
     if (summaryOutcome.action) {
       const ac = document.createElement("p");
-      ac.textContent = summaryOutcome.action;
+      ac.textContent = retentionAltActive(summaryOutcome) ? retentionAltAction(summaryOutcome) : summaryOutcome.action;
       dec.appendChild(ac);
     }
     const chosenNow = readChosenOption(currentRunFileName);
