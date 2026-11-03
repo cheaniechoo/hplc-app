@@ -6,155 +6,159 @@
 //   4. A formula sheet and a glossary.
 // Edit the text in STAGES, FORMULAS and GLOSSARY below; the page is built from them.
 (function () {
+  // Each stage: title, short (box text), key (one-line highlight), fig (guide-figures.js),
+  // rules (if -> then cards; tone: go / wait / stop / info), eq (equations), more (longer text, folded).
   const STAGES = {
     // ---------- Isocratic ----------
     "iso-start": {
-      lane: "iso", title: "Start: isocratic method",
-      short: "%B stays constant through each run.",
-      what: "In an isocratic method the mobile phase composition (%B) stays the same for the whole run. Method development changes one family of parameters at a time, in the order of the resolution equation: retention factor K first (%B), selectivity α second (temperature, solvent, ligand), efficiency N last (column and flow).",
-      decides: [
-        "Load one export per run (.csv or Excel). Conditions are read from the file name.",
-        "Every run is judged with the runs before it, in run-number order, so the answer doesn't depend on upload order.",
+      lane: "iso", title: "Start: isocratic method", short: "%B stays constant through each run.",
+      key: "Change one thing at a time: %B first, then the chemistry, then the column and flow.",
+      fig: "resolution",
+      rules: [
+        { if: "Load one export per run", then: "Conditions are read from the file name", tone: "info" },
+        { if: "Runs uploaded in any order", then: "Each is judged in run-number order", tone: "info" },
       ],
-      eq: ["Rs = ¼ √N × (α − 1)/α × k/(k + 1)"],
+      eq: [],
+      more: "In an isocratic method the mobile phase composition (%B) stays the same for the whole run. Method development follows the resolution equation: retention factor k first (%B), selectivity α second (temperature, solvent, ligand), efficiency N last (column and flow).",
     },
     equip: {
-      lane: "iso", title: "Equipment and safety",
-      short: "Column, mobile phase, back pressure first.",
-      what: "The column (ligand, bead line, pore size, carbon load, length × ID × particle size) and mobile phase (solvent B, pH) set what the separation can do. Before any decision, the run's back pressure is checked, because over-pressure is a safety hazard.",
-      decides: [
-        "Back pressure: the highest pump pressure in the file (raw trace × Intensity Multiplier) is compared with your limit. At or over the limit the run stops: no decision is given.",
-        "No pressure trace in the file: the check is marked “couldn't check” and the run continues.",
-        "Small integration blips under the area threshold (default 1% of total peak area) are removed and listed, and Rs is recalculated next to them.",
-        "If the Sample Name inside the file doesn't match the file name, you are warned to check the file.",
+      lane: "iso", title: "Equipment and safety", short: "Column, mobile phase, back pressure first.",
+      key: "Safety first: a run at or over the pressure limit stops here.",
+      fig: "pressure",
+      rules: [
+        { if: "BP ≥ your limit", then: "Stop: no decision for this run", tone: "stop" },
+        { if: "No pressure trace in the file", then: "“Couldn't check”, the run continues", tone: "wait" },
+        { if: "Tiny peaks under 1% of the area", then: "Removed as noise and listed", tone: "info" },
+        { if: "Sample Name ≠ file name", then: "Warning: check the file", tone: "wait" },
       ],
       eq: ["BP (psi) = raw pressure × Intensity Multiplier"],
+      more: "The column (ligand, bead line, pore size, carbon load, length × ID × particle size) and mobile phase (solvent B, pH) set what the separation can do. The highest pump pressure in the file is compared with your limit before anything else. Removed noise peaks get their neighbour's Rs recalculated (Wb = 4 tR/√N).",
     },
     ret: {
-      lane: "iso", title: "Retention (K): %B",
-      short: "−10 %B steps while tR ≪ spec.",
-      what: "%B controls how long every compound is retained. Lowering %B moves all peaks later and spreads them apart, which can reveal peaks hiding under others. A 10-point drop in %B roughly doubles the last peak's tR.",
-      decides: [
-        "Fewer peaks than the target and tR ≤ half the spec (tR ≪ spec): drop %B by 10 and run again. If several steps fit inside the spec they are listed, with −10 as the main one.",
-        "Fewer peaks and tR < spec (but over half): run Min %B (the %B that puts the last peak on the spec) and an intermediate %B, then compare.",
-        "Fewer peaks and tR > spec: go back to the previous %B and move to selectivity, or try the intermediate %B that puts the last peak on the spec.",
-        "Min %B comes from a straight-line fit of log k against %B once there are 4 retention runs; before that it is estimated from one run with the 10-points-doubles-tR rule.",
-        "Retention is finished once %B reaches Min %B with peaks still missing.",
+      lane: "iso", title: "Retention (K): %B", short: "−10 %B steps while tR ≪ spec.",
+      key: "Lower %B = more retention. Every −10 %B roughly doubles tR.",
+      fig: "retention",
+      rules: [
+        { if: "tR ≤ ½ spec", then: "Drop %B by 10", tone: "go" },
+        { if: "½ spec < tR ≤ spec", then: "Run Min %B and an intermediate %B, compare", tone: "wait" },
+        { if: "tR > spec", then: "Previous %B + selectivity, or the intermediate %B", tone: "stop" },
+        { if: "%B reaches Min %B, peaks missing", then: "Retention finished → selectivity", tone: "info" },
       ],
-      eq: ["k = (tR − t0) / t0", "log k = a + b × %B (straight line)", "Min %B (one run) = %B − 10 × log₂(tR spec / tR)"],
-    },
-    sel: {
-      lane: "iso", title: "Selectivity (α)",
-      short: "Temperature, then solvent, then ligand.",
-      what: "Selectivity changes the spacing between peaks, and can change their order, by changing the chemistry of the interactions. It is what separates two compounds that co-elute.",
-      decides: [
-        "Temperature ladder on the current solvent: ambient → 40 °C → 60 °C, then an Observe step (compare the chromatograms: a human judgement).",
-        "Solvent: switch from ACN to MeOH at the isoeluotropic %B (from the nomogram), then to the mixed solvent, each through the temperatures again.",
-        "Ligand: when temperature and solvents are exhausted, change the stationary phase (C18, C8, C18aq, BiPH, IBD, PFP) and start again.",
-        "Higher temperature also shortens tR (about 1.5% per °C), which the app uses to predict the next run.",
-      ],
-      eq: ["α = k₂ / k₁", "tR at a new temperature ≈ tR × (1 − 0.015 × ΔT)"],
+      eq: ["k = (tR − t0) / t0", "Min %B (one run) = %B − 10 × log₂(tR spec / tR)"],
+      more: "Lowering %B moves all peaks later and spreads them apart, which can reveal peaks hiding under others. Min %B is the %B that puts the last peak exactly on the spec: from a straight-line fit of log k against %B once there are 4 retention runs, estimated from one run before that.",
     },
     peaks: {
-      lane: "iso", title: "All peaks found?", decision: true,
-      short: "Peaks = target?",
-      what: "The decision point between the chemistry (retention, selectivity) and efficiency. Efficiency narrows peaks but cannot make co-eluting peaks appear, so it is only used once every compound is visible.",
-      decides: [
-        "Fewer peaks than the target: Rs is 0 (peaks co-elute); stay in retention or selectivity.",
-        "More peaks than the target: check the integration (noise) or purge for carry-over.",
-        "Exactly the target: go to efficiency.",
+      lane: "iso", title: "All peaks found?", decision: true, short: "Peaks = target?",
+      key: "Efficiency can't make hidden peaks appear, so it waits until every peak is visible.",
+      rules: [
+        { if: "Fewer peaks than the target", then: "Rs = 0: retention or selectivity", tone: "stop" },
+        { if: "More peaks than the target", then: "Check the integration or purge", tone: "wait" },
+        { if: "Exactly the target", then: "Efficiency", tone: "go" },
       ],
       eq: [],
     },
-    eff: {
-      lane: "iso", title: "Efficiency (N)",
-      short: "9 cases: column and flow.",
-      what: "Efficiency changes peak width, not peak position or order. With the chemistry frozen (solvent, %B, pH, temperature stay), the levers are column length L, particle size PS, bead type (fully porous or core-shell SPP), flow F and internal diameter ID. Rs grows only with √N, so efficiency closes small gaps.",
-      decides: [
-        "The run is placed in one of 9 cases by its tR (≪, <, > spec) and its Rs (below the floor, between floor and spec, above spec).",
-        "The Rs floor is the lowest Rs that column and flow changes can still bring to spec within the tR and BP limits (Awesome Calculator). It moves with the specs. The SPP floor is used when your column list has a core-shell column with this ligand.",
-        "Below the floor, or no column meeting all three specs in case 1: back to selectivity.",
-        "Otherwise every column in your list (same ligand) is tried at its best flow, and the best one allowed by the case is recommended, with predicted tR, BP and Rs. Other options are ranked underneath.",
+    sel: {
+      lane: "iso", title: "Selectivity (α)", short: "Temperature, then solvent, then ligand.",
+      key: "Change the spacing between peaks by changing the chemistry.",
+      fig: "selectivity",
+      rules: [
+        { if: "Temperature ladder", then: "Ambient → 40 °C → 60 °C, then Observe", tone: "go" },
+        { if: "Temperatures exhausted", then: "MeOH, then MIX (isoeluotropic %B)", tone: "go" },
+        { if: "Solvents exhausted", then: "New ligand, start again", tone: "wait" },
       ],
-      eq: ["H = (1.5·PS + 3/u + 0.15·PS²·u) / SPP", "N = L × 1000 / H", "Rs₂ = Rs₁ × √(N₂/N₁)", "Rs floor = Rs spec × √(N₁ / Nmax)"],
+      eq: ["α = k₂ / k₁", "tR at a new temperature ≈ tR × (1 − 0.015 × ΔT)"],
+      more: "Selectivity changes the spacing between peaks, and can change their order. It is what separates two compounds that co-elute. Observe steps are your judgement: compare the chromatograms. Higher temperature also shortens tR (about 1.5% per °C), which the app uses to predict the next run.",
+    },
+    eff: {
+      lane: "iso", title: "Efficiency (N)", short: "9 cases: column and flow.",
+      key: "Narrow the peaks; their positions stay. Rs grows with √N.",
+      fig: "efficiency",
+      rules: [
+        { if: "Rs below the floor", then: "Back to selectivity", tone: "stop" },
+        { if: "Floor < Rs < spec", then: "Best column and flow from your list", tone: "go" },
+        { if: "Rs ≥ spec", then: "Met; optionally faster flow", tone: "go" },
+      ],
+      eq: ["H = (1.5·PS + 3/u + 0.15·PS²·u) / SPP", "Rs₂ = Rs₁ × √(N₂/N₁)", "Rs floor = Rs spec × √(N₁ / Nmax)"],
+      more: "With the chemistry frozen (solvent, %B, pH, temperature), the levers are column length, particle size, bead (fully porous or core-shell), flow and internal diameter. The run is placed in one of 9 cases by its tR and Rs. The floor is the lowest Rs that column and flow changes can still bring to spec within the tR and BP limits, so it moves with the specs. Every column in your list with this ligand is tried at its best flow; predictions use the Awesome Calculator.",
     },
     met: {
-      lane: "iso", title: "Method met",
-      short: "Peaks, tR, Rs and BP all in spec.",
-      what: "All target peaks are separated (Rs at or above spec), the last peak is within the tR spec, and back pressure is under the limit. The flow can optionally be raised to shorten the run, as long as Rs and BP stay in spec.",
-      decides: ["Cases 3 and 6 of the efficiency table: the app shows the fastest flow that keeps Rs and BP in spec."],
+      lane: "iso", title: "Method met", short: "Peaks, tR, Rs and BP all in spec.",
+      key: "Done. Optionally raise the flow to shorten the run.",
+      rules: [{ if: "Cases 3 and 6", then: "Fastest flow that keeps Rs and BP in spec", tone: "go" }],
       eq: [],
     },
     // ---------- Gradient ----------
     "gra-start": {
-      lane: "gra", title: "Start: gradient method",
-      short: "%B changes during the run.",
-      what: "In a gradient method %B rises during the run (after a short isocratic hold). Peaks are sharper, and the spacing is steered with one number: the gradient steepness GS. Keeping GS constant keeps the selectivity; changing GS changes it.",
-      decides: ["The gradient flow chart has its own dashboard, specification and history, separate from the isocratic one."],
-      eq: ["GS = Δφ × Vm / (tG × F)", "Vm = π × (ID/2)² × L × 0.68 / 1000 (mL)"],
+      lane: "gra", title: "Start: gradient method", short: "%B changes during the run.",
+      key: "One number steers the spacing: the gradient steepness GS.",
+      fig: "gs",
+      rules: [
+        { if: "Same GS", then: "Same selectivity", tone: "go" },
+        { if: "Different GS", then: "Different spacing", tone: "wait" },
+      ],
+      eq: ["GS = Δφ × Vm / (tG × F)", "Vm = π (ID/2)² L × 0.68 / 1000"],
+      more: "In a gradient %B rises during the run, after a short isocratic hold. Peaks are sharper than in isocratic. The gradient flow chart has its own dashboard, specification and history.",
     },
     scout: {
-      lane: "gra", title: "Scouting gradient",
-      short: "5–100 %B in 20 min, 1.5 mL/min.",
-      what: "The first gradient run: a wide window (5–100 %B) over tG = 20 min at 1.5 mL/min, after a 2 min hold at 5 %B. It shows how many peaks there are and at what %B they elute. GS ≈ 0.054 on a 150 × 4.6 mm column.",
-      decides: ["Each new chemistry (temperature, solvent, ligand) starts again from a scouting gradient, and is the reference for G1 ↑ and G1 ↓."],
-      eq: ["%B at elution = %B ini + (tR − hold) × (%B fin − %B ini) / tG"],
+      lane: "gra", title: "Scouting gradient", short: "5–100 %B in 20 min, 1.5 mL/min.",
+      key: "Where do the peaks elute? Start wide: 5 → 100 %B in 20 min.",
+      fig: "scout",
+      rules: [{ if: "Any new chemistry", then: "Start again from a scouting gradient", tone: "info" }],
+      eq: ["%B at elution = %B ini + (tR − hold) × Δ%B / tG"],
+      more: "A 2 min hold at 5 %B keeps every compound at the head of the column until the ramp starts. GS ≈ 0.054 on a 150 × 4.6 mm column at 1.5 mL/min. The scouting run is the reference for G1 ↑ and G1 ↓.",
     },
     gpeaks: {
-      lane: "gra", title: "All peaks found?", decision: true,
-      short: "Peaks = target?",
-      what: "Fewer peaks: change GS to change the spacing (G1). All peaks: keep GS, so the spacing stays, and adjust time and resolution (G2, G3, G4).",
-      decides: [], eq: [],
-    },
-    g1up: {
-      lane: "gra", title: "G1 ↑ Increase GS",
-      short: "Same window, tG × 0.5.",
-      what: "Fewer peaks than the target on the scouting run: some compounds co-elute. A steeper gradient (shorter tG) changes the spacing.",
-      decides: ["Next run: same %B window and flow, tG × 0.5 (GS doubles)."],
-      eq: ["GS₂ = GS₁ / 0.5"],
-    },
-    g1down: {
-      lane: "gra", title: "G1 ↓ Decrease GS",
-      short: "Back to scouting, tG × 1.2.",
-      what: "Raising GS didn't give all the peaks, so try the other way: a shallower gradient than the scouting run.",
-      decides: ["Next run: the scouting run's window and flow, tG × 1.2 (GS ÷ 1.2)."],
+      lane: "gra", title: "All peaks found?", decision: true, short: "Peaks = target?",
+      key: "Fewer peaks: change GS. All peaks: keep GS.",
+      rules: [
+        { if: "Fewer peaks", then: "G1: change GS", tone: "stop" },
+        { if: "All peaks", then: "G2, G3, G4: keep GS", tone: "go" },
+      ],
       eq: [],
     },
+    g1up: {
+      lane: "gra", title: "G1 ↑ Increase GS", short: "Same window, tG × 0.5.",
+      key: "Steeper gradient: half the tG, same window.", fig: "g1",
+      rules: [{ if: "Fewer peaks on the scouting run", then: "tG × 0.5 (GS × 2)", tone: "go" }], eq: [],
+    },
+    g1down: {
+      lane: "gra", title: "G1 ↓ Decrease GS", short: "Back to scouting, tG × 1.2.",
+      key: "Still missing? Try shallower than the scouting run.", fig: "g1",
+      rules: [{ if: "Fewer peaks after G1 ↑", then: "Scouting tG × 1.2", tone: "go" }], eq: [],
+    },
     g1x: {
-      lane: "gra", title: "G1 ✕ Change selectivity",
-      short: "Temperature, then solvent, then ligand.",
-      what: "Neither a steeper nor a shallower gradient gave all the peaks: GS alone cannot separate them, so the chemistry changes. Each new condition runs the cases again from a scouting gradient.",
-      decides: [
-        "Order: temperature 40 °C, then 60 °C; then solvent MeOH, then MIX (at ambient); then a change of ligand.",
-        "G2 exhausted (tG at its 60 min limit, Rs still below spec) also leads here.",
+      lane: "gra", title: "G1 ✕ Change selectivity", short: "Temperature, then solvent, then ligand.",
+      key: "GS alone can't separate them: change the chemistry.",
+      fig: "selectivity",
+      rules: [
+        { if: "Fewer peaks after G1 ↑ and ↓", then: "40 °C → 60 °C → MeOH → MIX → ligand", tone: "stop" },
+        { if: "G2 at tG 60 min, Rs still low", then: "Also comes here", tone: "wait" },
       ],
       eq: [],
     },
     g2: {
-      lane: "gra", title: "G2 Keep GS, stretch",
-      short: "Rs < spec: F × 0.8, tG ÷ 0.8.",
-      what: "All peaks are there but Rs is below spec. Keeping GS keeps the spacing; a lower flow and longer tG stretch the chromatogram and gain plates (Rs grows with √N).",
-      decides: [
-        "Next run: F × 0.8 and tG ÷ 0.8 (GS unchanged), capped at tG = 60 min.",
-        "Predicted Rs: best case Rs × √(F₁/F₂), or fitted to your earlier G2 runs.",
+      lane: "gra", title: "G2 Keep GS, stretch", short: "Rs < spec: F × 0.8, tG ÷ 0.8.",
+      key: "Same pattern, stretched: lower flow, longer tG, GS unchanged.", fig: "g2",
+      rules: [
+        { if: "All peaks, Rs < spec", then: "F × 0.8, tG ÷ 0.8", tone: "go" },
+        { if: "tG would pass 60 min", then: "Capped at 60 min", tone: "wait" },
       ],
-      eq: ["Rs₂ ≈ Rs₁ × (F₁/F₂)^0.5 (best case)"],
+      eq: ["Rs₂ ≈ Rs₁ × √(F₁/F₂) (best case)"],
     },
     g3: {
-      lane: "gra", title: "G3 Keep GS, shrink",
-      short: "Trim unused %B, cut tG in proportion.",
-      what: "All peaks resolved but part of the %B window is wasted. Trimming it shortens the run without changing the spacing, because tG is cut in the same proportion as Δφ.",
-      decides: [
-        "New %B ini = %B at the first peak (after uracil) − 20; new %B fin = %B at the last peak + 5; tG × (new Δφ / old Δφ).",
-        "Shrink once. If the run is still over the run-time spec: F × x and tG ÷ x, with BP × x ≤ limit and Rs ÷ √x ≥ spec.",
+      lane: "gra", title: "G3 Keep GS, shrink", short: "Trim unused %B, cut tG in proportion.",
+      key: "Cut the wasted %B at both ends; GS stays, so the spacing stays.", fig: "g3",
+      rules: [
+        { if: "Rs ≥ spec, %B wasted", then: "%B first peak − 20 → %B last peak + 5", tone: "go" },
+        { if: "Already shrunk, still too long", then: "F × x, tG ÷ x (within BP and Rs)", tone: "wait" },
       ],
       eq: ["x ≤ BP limit / BP and x ≤ (Rs / Rs spec)²"],
     },
     g4: {
-      lane: "gra", title: "G4 Method met",
-      short: "Lock it.",
-      what: "All peaks, Rs at or above spec, last peak inside the run-time spec and no %B wasted. If F can't be raised without losing Rs or exceeding BP, a longer run is accepted.",
-      decides: [], eq: [],
+      lane: "gra", title: "G4 Method met", short: "Lock it.",
+      key: "All peaks, Rs ≥ spec, tR in spec, no %B wasted.",
+      rules: [{ if: "F can't rise without losing Rs or BP", then: "Accept the longer run", tone: "info" }],
+      eq: [],
     },
   };
 
@@ -267,6 +271,15 @@
 
   let selected = "ret";
 
+  // Live numbers for the figures (the Rs gauge uses the current 7-peak run when there is one).
+  function figContext() {
+    const o = typeof window.isoCurrentOutcome === "function" ? window.isoCurrentOutcome() : null;
+    const specEl = document.getElementById("spec-rs");
+    const sp = specEl ? Number(specEl.value) : 1.4;
+    if (o && o.efficiencyRef && typeof o.floorUsed === "number") return { live: true, rs: o.efficiencyRef.Rs, floor: o.floorUsed, spec: sp };
+    return { live: false, rs: 1.2, floor: 1.0, spec: Number.isFinite(sp) && sp > 0 ? sp : 1.4 };
+  }
+
   // ---------- the diagram ----------
   function nodeEl(id, here) {
     const s = STAGES[id];
@@ -346,28 +359,47 @@
     return wrap;
   }
 
+  const TONE_WORD = { go: "Then", wait: "Then", stop: "Then", info: "Then" };
   function stageBody(id, opts) {
     const s = STAGES[id];
     const box = mk("div", "fc-stage-body");
-    box.appendChild(mk("p", null, s.what));
-    if (s.decides.length) {
-      box.appendChild(mk("h4", null, "How the app decides"));
-      const ul = mk("ul");
-      s.decides.forEach(function (d) { ul.appendChild(mk("li", null, d)); });
-      box.appendChild(ul);
+    if (opts && opts.current) {
+      const cur = mk("div", "fc-current");
+      cur.appendChild(mk("span", "fc-here", "You are here"));
+      cur.appendChild(mk("p", "fc-current-action", opts.current.action));
+      if (opts.current.file) cur.appendChild(mk("p", "fc-current-file", opts.current.file));
+      box.appendChild(cur);
     }
-    if (s.eq.length) {
-      box.appendChild(mk("h4", null, "Equations"));
+    if (s.key) box.appendChild(mk("p", "fc-key " + (s.lane === "gra" ? "gra" : "iso"), s.key));
+    if (s.fig && window.guideFigures) {
+      const f = window.guideFigures.get(s.fig, opts && opts.figCtx);
+      if (f) box.appendChild(f);
+    }
+    if (s.rules && s.rules.length) {
+      const rules = mk("div", "fc-rules");
+      s.rules.forEach(function (r) {
+        const c = mk("div", "fc-rule t-" + (r.tone || "info"));
+        const iff = mk("div", "fc-rule-if");
+        iff.appendChild(mk("span", "fc-rule-tag", "If"));
+        iff.appendChild(document.createTextNode(r.if));
+        const then = mk("div", "fc-rule-then");
+        then.appendChild(mk("span", "fc-rule-tag", TONE_WORD[r.tone] || "Then"));
+        then.appendChild(document.createTextNode(r.then));
+        c.append(iff, then);
+        rules.appendChild(c);
+      });
+      box.appendChild(rules);
+    }
+    if (s.eq && s.eq.length) {
       const eqs = mk("div", "fc-eqs");
       s.eq.forEach(function (e) { eqs.appendChild(mk("code", "fc-eq", e)); });
       box.appendChild(eqs);
     }
-    if (opts && opts.current) {
-      const cur = mk("div", "fc-current");
-      cur.appendChild(mk("span", "fc-here", "You are here"));
-      cur.appendChild(mk("p", "fc-current-file", opts.current.file || ""));
-      cur.appendChild(mk("p", "fc-current-action", opts.current.action));
-      box.appendChild(cur);
+    if (s.more) {
+      const d = mk("details", "fc-more");
+      d.appendChild(mk("summary", null, "More detail"));
+      d.appendChild(mk("p", null, s.more));
+      box.appendChild(d);
     }
     return box;
   }
@@ -379,7 +411,7 @@
     panel.appendChild(mk("span", "fc-detail-lane", s.lane === "iso" ? "Isocratic" : "Gradient"));
     panel.appendChild(mk("h3", null, s.title));
     const cur = s.lane === "iso" ? (iso && iso.node === selected ? iso : null) : (gra && gra.node === selected ? gra : null);
-    panel.appendChild(stageBody(selected, { current: cur }));
+    panel.appendChild(stageBody(selected, { current: cur, figCtx: figContext() }));
     const go = mk("button", "secondary", s.lane === "iso" ? "Open the isocratic dashboard" : "Open the gradient dashboard");
     go.type = "button";
     go.addEventListener("click", function () { const t = document.getElementById(s.lane === "iso" ? "tab-flowchart" : "tab-gradient"); if (t) t.click(); });
@@ -399,7 +431,7 @@
     };
     status.append(line("Isocratic", iso), line("Gradient", gra));
     box.appendChild(status);
-    box.appendChild(mk("p", "hint", "Click a box to read what that stage does and how the app decides. The box your current run is in is marked “You are here”."));
+    box.appendChild(mk("p", "hint", "Click a box to see that stage. Amber = your current run."));
     const grid = mk("div", "fc-grid");
     grid.append(buildDiagram(iso, gra), buildDetail(iso, gra));
     box.appendChild(grid);
@@ -407,64 +439,94 @@
 
   function renderStages(box, iso, gra) {
     box.replaceChildren();
-    [["Isocratic", ISO_FLOW], ["Gradient", ["gra-start", "scout", "gpeaks", "g1up", "g1down", "g1x", "g2", "g3", "g4"]]].forEach(function (grp) {
-      box.appendChild(mk("h3", "fc-group-title", grp[0]));
-      grp[1].forEach(function (id) {
-        const d = mk("details", "fc-stage");
+    [["Isocratic", ISO_FLOW, "iso"], ["Gradient", ["gra-start", "scout", "gpeaks", "g1up", "g1down", "g1x", "g2", "g3", "g4"], "gra"]].forEach(function (grp) {
+      box.appendChild(mk("h3", "fc-group-title fc-lane-head " + grp[2], grp[0]));
+      const list = mk("div", "fc-stage-list");
+      grp[1].forEach(function (id, i) {
+        const d = mk("details", "fc-stage " + grp[2]);
         const curr = STAGES[id].lane === "iso" ? (iso && iso.node === id ? iso : null) : (gra && gra.node === id ? gra : null);
-        if (curr) d.open = true;
+        if (curr) { d.open = true; d.classList.add("is-here"); }
         const sum = mk("summary");
-        sum.appendChild(mk("span", "fc-stage-title", STAGES[id].title));
-        sum.appendChild(mk("span", "fc-stage-short", STAGES[id].short));
+        sum.appendChild(mk("span", "fc-step-no", String(i + 1)));
+        const txt = mk("span", "fc-stage-text");
+        txt.appendChild(mk("span", "fc-stage-title", STAGES[id].title));
+        txt.appendChild(mk("span", "fc-stage-short", STAGES[id].key || STAGES[id].short));
+        sum.appendChild(txt);
         if (curr) sum.appendChild(mk("span", "fc-here", "You are here"));
         d.appendChild(sum);
-        d.appendChild(stageBody(id, { current: curr }));
-        box.appendChild(d);
+        d.appendChild(stageBody(id, { current: curr, figCtx: figContext() }));
+        list.appendChild(d);
       });
+      box.appendChild(list);
     });
   }
 
   function renderCases(box, iso, gra) {
     box.replaceChildren();
-    box.appendChild(mk("h3", "fc-group-title", "Efficiency: the nine cases (7 peaks)"));
-    const t = mk("table", "options-table fc-table");
-    const hr = t.createTHead().insertRow();
-    ["Case", "Run time", "Resolution", "Action"].forEach(function (h) { hr.appendChild(mk("th", null, h)); });
-    const b = t.createTBody();
-    EFF_CASES.forEach(function (c) {
-      const tr = b.insertRow();
-      if (iso && iso.effCase === c[0]) tr.className = "primary-option";
-      c.forEach(function (v) { tr.insertCell().textContent = String(v); });
+    box.appendChild(mk("h3", "fc-group-title", "Efficiency: the nine cases (all peaks found)"));
+    const grid = mk("div", "fc-casegrid");
+    grid.appendChild(mk("div", "fc-cg-corner", "last peak tR \u2193  /  Rs \u2192"));
+    ["Rs below the floor", "floor < Rs < spec", "Rs \u2265 spec"].forEach(function (h, i) { grid.appendChild(mk("div", "fc-cg-colhead c" + i, h)); });
+    const rows = ["tR \u226a spec (\u2264 \u00bd)", "tR < spec", "tR > spec"];
+    rows.forEach(function (rh, r) {
+      grid.appendChild(mk("div", "fc-cg-rowhead", rh));
+      for (let c = 0; c < 3; c++) {
+        const k = EFF_CASES[r * 3 + c];
+        const tone = /SELECTIVITY/.test(k[3]) && !/Increase L/.test(k[3]) ? "stop" : /MET/.test(k[3]) ? "go" : "wait";
+        const cell = mk("div", "fc-cg-cell t-" + tone + (iso && iso.effCase === k[0] ? " here" : ""));
+        cell.appendChild(mk("span", "fc-cg-no", "Case " + k[0]));
+        cell.appendChild(mk("span", "fc-cg-act", k[3]));
+        if (iso && iso.effCase === k[0]) cell.appendChild(mk("span", "fc-here", "You are here"));
+        grid.appendChild(cell);
+      }
     });
-    box.appendChild(t);
-    box.appendChild(mk("p", "note", "tR ≪ spec means the last peak is at or under half the spec (room for another −10 %B). " + (iso && iso.effCase ? "Highlighted: your current run (case " + iso.effCase + ")." : "Load a 7-peak isocratic run to highlight its case.")));
+    box.appendChild(grid);
+    const lg = mk("div", "fc-cg-legend");
+    [["go", "met / done"], ["wait", "change column or flow"], ["stop", "back to selectivity"]].forEach(function (l) { lg.appendChild(mk("span", "fc-cg-key t-" + l[0], l[1])); });
+    box.appendChild(lg);
+
     box.appendChild(mk("h3", "fc-group-title", "Gradient: the cases"));
-    const g = mk("table", "options-table fc-table");
-    const gh = g.createTHead().insertRow();
-    ["Case", "Peaks", "Rs min", "Action"].forEach(function (h) { gh.appendChild(mk("th", null, h)); });
-    const gb = g.createTBody();
+    const gl = mk("div", "fc-gcases");
     GRA_CASES.forEach(function (c) {
-      const tr = gb.insertRow();
-      if (gra && gra.caseId === c[0]) tr.className = "primary-option";
-      c.slice(1).forEach(function (v) { tr.insertCell().textContent = v; });
+      const tone = c[0] === "G4" ? "go" : c[0] === "G1x" ? "stop" : c[0] === "G2" || c[0] === "G3" ? "go" : "wait";
+      const card = mk("div", "fc-gcase t-" + tone + (gra && gra.caseId === c[0] ? " here" : ""));
+      card.appendChild(mk("span", "fc-gcase-id", c[1]));
+      const body = mk("div", "fc-gcase-body");
+      const cond = mk("p", "fc-gcase-cond");
+      cond.appendChild(mk("span", "fc-chip", "Peaks " + c[2]));
+      cond.appendChild(mk("span", "fc-chip", "Rs " + c[3]));
+      body.appendChild(cond);
+      body.appendChild(mk("p", "fc-gcase-act", c[4]));
+      card.appendChild(body);
+      if (gra && gra.caseId === c[0]) card.appendChild(mk("span", "fc-here", "You are here"));
+      gl.appendChild(card);
     });
-    box.appendChild(g);
-    box.appendChild(mk("p", "note", gra ? "Highlighted: your current gradient run." : "Load a gradient run to highlight its case."));
+    box.appendChild(gl);
   }
 
   function renderFormulas(box) {
     box.replaceChildren();
-    FORMULAS.forEach(function (grp) {
-      box.appendChild(mk("h3", "fc-group-title", grp[0]));
-      const dl = mk("div", "fc-formulas");
+    const nav = mk("div", "fc-chipnav");
+    FORMULAS.forEach(function (grp, gi) {
+      const a = mk("a", "fc-chip g" + gi, grp[0]);
+      a.href = "#fc-fgroup-" + gi;
+      a.addEventListener("click", function (e) { e.preventDefault(); const t = document.getElementById("fc-fgroup-" + gi); if (t) t.scrollIntoView({ behavior: "smooth", block: "start" }); });
+      nav.appendChild(a);
+    });
+    box.appendChild(nav);
+    FORMULAS.forEach(function (grp, gi) {
+      const h = mk("h3", "fc-group-title fc-fhead g" + gi, grp[0]);
+      h.id = "fc-fgroup-" + gi;
+      box.appendChild(h);
+      const cards = mk("div", "fc-fcards");
       grp[1].forEach(function (f) {
-        const row = mk("div", "fc-formula");
-        row.appendChild(mk("span", "fc-formula-name", f[0]));
-        row.appendChild(mk("code", "fc-eq", f[1]));
-        if (f[2]) row.appendChild(mk("span", "fc-formula-note", f[2]));
-        dl.appendChild(row);
+        const c = mk("div", "fc-fcard g" + gi);
+        c.appendChild(mk("span", "fc-fcard-name", f[0]));
+        c.appendChild(mk("code", "fc-fcard-eq", f[1]));
+        if (f[2]) c.appendChild(mk("span", "fc-fcard-note", f[2]));
+        cards.appendChild(c);
       });
-      box.appendChild(dl);
+      box.appendChild(cards);
     });
   }
 
@@ -472,21 +534,24 @@
     box.replaceChildren();
     const filter = mk("input", "fc-search");
     filter.type = "search";
-    filter.placeholder = "Search a term";
+    filter.placeholder = "Search a term, e.g. floor";
     filter.setAttribute("aria-label", "Search the glossary");
-    const dl = mk("dl", "fc-glossary");
+    const grid = mk("div", "fc-gloss");
     const fill = function () {
-      dl.replaceChildren();
+      grid.replaceChildren();
       const q = filter.value.trim().toLowerCase();
       GLOSSARY.forEach(function (g) {
         if (q && (g[0] + " " + g[1]).toLowerCase().indexOf(q) === -1) return;
-        dl.append(mk("dt", null, g[0]), mk("dd", null, g[1]));
+        const c = mk("div", "fc-gcard");
+        c.appendChild(mk("span", "fc-gsym", g[0]));
+        c.appendChild(mk("p", null, g[1]));
+        grid.appendChild(c);
       });
-      if (!dl.children.length) dl.appendChild(mk("p", "hint", "No term matches."));
+      if (!grid.children.length) grid.appendChild(mk("p", "hint", "No term matches."));
     };
     filter.addEventListener("input", fill);
     fill();
-    box.append(filter, dl);
+    box.append(filter, grid);
   }
 
   // ---------- sub-steps and refresh ----------
