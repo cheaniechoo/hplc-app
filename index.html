@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>HPLC method development assistant</title>
-  <link rel="stylesheet" href="style.css?v=20261103-1905">
+  <link rel="stylesheet" href="style.css?v=20261103-1925">
 </head>
 <body>
 
@@ -271,8 +271,24 @@
     <section aria-labelledby="g-history-heading">
       <h2 id="g-history-heading">Gradient run history</h2>
       <p class="hint">Every gradient run in run order, laid out like the course table: conditions, then responses, then the decision. Under each run, the next run's conditions are pre-filled with their GS. Click a run's name to open it on the dashboard.</p>
-      <div class="history-tools"><button type="button" id="g-clear-history" class="secondary">Clear the gradient history</button></div>
-      <div id="g-history-container"></div>
+      <div class="history-tools">
+        <button id="g-toggle-all-chroms" type="button" class="secondary" hidden>Show all chromatograms</button>
+        <button id="g-clear-history" type="button" class="secondary danger-outline">Clear history</button>
+        <span id="g-clear-confirm" class="clear-confirm" hidden>
+          <strong id="g-clear-question">Delete every saved gradient run?</strong>
+          <button id="g-clear-yes" type="button">Yes, clear it</button>
+          <button id="g-clear-no" type="button" class="secondary">Cancel</button>
+        </span>
+        <span id="g-clear-message" class="hint" role="status"></span>
+      </div>
+      <div class="col-groups" role="group" aria-label="Columns to show">
+        <span class="col-groups-label">Show columns:</span>
+        <button type="button" class="col-group-btn g-colbtn" data-group="cond" aria-pressed="true">Conditions</button>
+        <button type="button" class="col-group-btn g-colbtn" data-group="resp" aria-pressed="true">Responses</button>
+        <button type="button" class="col-group-btn g-colbtn" data-group="dec" aria-pressed="true">Decision</button>
+        <span class="hist-legend" aria-label="Case colours"><span class="stage-chip st-ret">G1 &uarr;/&darr; change GS</span><span class="stage-chip st-sel">G1 &#x2715; selectivity</span><span class="stage-chip st-handoff">G2 / G3 keep GS</span><span class="stage-chip st-pass">G4 met</span><span class="stage-chip st-unsafe">Stop</span></span>
+      </div>
+      <div id="g-history-container" class="table-scroll"></div>
     </section>
   </main>
 
@@ -490,21 +506,21 @@
     </section>
   </main>
 
-  <script src="equipment-data.js?v=20261103-1905"></script>
-  <script src="efficiency.js?v=20261103-1905"></script>
-  <script src="logic.js?v=20261103-1905"></script>
-  <script src="monash-columns.js?v=20261103-1905"></script>
-  <script src="user-columns.js?v=20261103-1905"></script>
-  <script src="module-howto.js?v=20261103-1905"></script>
-  <script src="chromatogram.js?v=20261103-1905"></script>
-  <script src="logk-chart.js?v=20261103-1905"></script>
-  <script src="gradient.js?v=20261103-1905"></script>
-  <script src="app.js?v=20261103-1905"></script>
-  <script src="gradient-app.js?v=20261103-1905"></script>
-  <script src="guide-figures.js?v=20261103-1905"></script>
-  <script src="flowchart.js?v=20261103-1905"></script>
-  <script src="ligand-structures.js?v=20261103-1905"></script>
-  <script src="equipment-interactive.js?v=20261103-1905"></script>
-  <script src="nav.js?v=20261103-1905"></script>
+  <script src="equipment-data.js?v=20261103-1925"></script>
+  <script src="efficiency.js?v=20261103-1925"></script>
+  <script src="logic.js?v=20261103-1925"></script>
+  <script src="monash-columns.js?v=20261103-1925"></script>
+  <script src="user-columns.js?v=20261103-1925"></script>
+  <script src="module-howto.js?v=20261103-1925"></script>
+  <script src="chromatogram.js?v=20261103-1925"></script>
+  <script src="logk-chart.js?v=20261103-1925"></script>
+  <script src="gradient.js?v=20261103-1925"></script>
+  <script src="app.js?v=20261103-1925"></script>
+  <script src="gradient-app.js?v=20261103-1925"></script>
+  <script src="guide-figures.js?v=20261103-1925"></script>
+  <script src="flowchart.js?v=20261103-1925"></script>
+  <script src="ligand-structures.js?v=20261103-1925"></script>
+  <script src="equipment-interactive.js?v=20261103-1925"></script>
+  <script src="nav.js?v=20261103-1925"></script>
 </body>
 </html>

@@ -418,11 +418,50 @@
 
   // ---------- rendering: history (own tab, laid out like the isocratic run history) ----------
   const shownChrom = new Set();
+  function gStageClass(d) {
+    if (!d || !d.caseId) return "st-none";
+    if (d.unsafe) return "st-unsafe";
+    if (d.caseId === "G1up" || d.caseId === "G1down") return "st-ret";
+    if (d.caseId === "G1x" || d.caseId === "G2stop") return "st-sel";
+    if (d.caseId === "G2" || d.caseId === "G3" || d.caseId === "G3fast") return "st-handoff";
+    if (d.caseId === "G4") return "st-pass";
+    return "st-err";
+  }
+  // Column groups shown (kept in this browser), like the isocratic history.
+  const G_COLS_KEY = "hplc-gradient-history-column-groups-v1";
+  const gCols = { cond: true, resp: true, dec: true };
+  try { Object.assign(gCols, JSON.parse(localStorage.getItem(G_COLS_KEY) || "{}")); } catch (err) { /* defaults */ }
+  function applyGCols() {
+    const box = $("g-history-container");
+    if (box) Object.keys(gCols).forEach(function (g) { box.classList.toggle("hide-" + g, !gCols[g]); });
+    document.querySelectorAll(".g-colbtn").forEach(function (b) { b.setAttribute("aria-pressed", gCols[b.dataset.group] ? "true" : "false"); });
+  }
+  document.querySelectorAll(".g-colbtn").forEach(function (b) {
+    b.addEventListener("click", function () {
+      gCols[b.dataset.group] = !gCols[b.dataset.group];
+      try { localStorage.setItem(G_COLS_KEY, JSON.stringify(gCols)); } catch (err) { /* ignore */ }
+      applyGCols();
+    });
+  });
+  function updateGHistoryExtras(h) {
+    const all = $("g-toggle-all-chroms");
+    if (!all) return;
+    const withChrom = h.filter(function (r) { return r.chrom; });
+    all.hidden = withChrom.length === 0;
+    const everyOpen = withChrom.length > 0 && withChrom.every(function (r) { return shownChrom.has(r.fileName); });
+    all.textContent = everyOpen ? "Hide all chromatograms" : "Show all chromatograms";
+    all.onclick = function () {
+      if (everyOpen) shownChrom.clear(); else withChrom.forEach(function (r) { shownChrom.add(r.fileName); });
+      renderHistory();
+    };
+  }
   function renderHistory() {
     const box = $("g-history-container");
     if (!box) return;
     const h = G.sort(readHistory());
-    if (!h.length) { box.replaceChildren(mk("p", "empty", "No gradient runs yet.")); return; }
+    updateGHistoryExtras(h);
+    applyGCols();
+    if (!h.length) { box.replaceChildren(mk("p", "empty", "No gradient runs in the history yet.")); return; }
     const specs = readSpecs();
     const cols = [
       ["Run", "run", "run"],
@@ -444,7 +483,7 @@
       const d = r.decision || {};
       const dims = String(r.columnDimensions || "").split("x");
       const tr = body.insertRow();
-      tr.className = "hist-row" + (d.pass ? " st-pass" : "") + (d.unsafe ? " st-unsafe" : "") + (r.fileName === currentFile ? " g-current" : "");
+      tr.className = "hist-row " + gStageClass(d) + (r.fileName === currentFile ? " g-current" : "");
       cols.forEach(function (c) {
         const td = tr.insertCell();
         if (c[2].indexOf("first") !== -1) td.classList.add("grp-start");
@@ -482,8 +521,8 @@
           }
           case "bp": put(typeof r.maxPressure === "number" ? Math.round(r.maxPressure) : ""); if (typeof r.maxPressure === "number") td.classList.add(r.maxPressure < specs.maxPressure ? "spec-ok" : "spec-bad"); break;
           case "gs": put(typeof d.GS === "number" ? d.GS.toFixed(4) : ""); break;
-          case "case": put(d.caseLabel || d.stage || ""); td.classList.add("hist-case"); break;
-          case "action": put(d.action || ""); td.classList.add("hist-result"); break;
+          case "case": { const chip = mk("span", "stage-chip", d.caseLabel || d.stage || ""); td.appendChild(chip); td.classList.add("hist-case"); break; }
+          case "action": put(d.action || ""); td.classList.add("hist-result", gStageClass(d)); break;
           case "gsnext": put(d.next ? d.next.GS.toFixed(4) : ""); break;
           case "chrom": {
             if (!r.chrom) { td.textContent = "Not stored"; td.className = "hist-pending"; break; }
@@ -503,6 +542,7 @@
         const div = mk("div", "run-chrom-wrap");
         div.innerHTML = chromSVG(r);
         cell.appendChild(div);
+        cell.appendChild(mk("p", "hint", (r.chrom.real ? "Detector trace saved from the file." : "Rebuilt from the peak table (the file had no detector trace).") + " Green line: the %B programme."));
       }
       // The next run's conditions, pre-filled in the row below.
       if (d.next) {
@@ -514,6 +554,7 @@
         cols.forEach(function (c) {
           const td = nx.insertCell();
           if (c[2].indexOf("first") !== -1) td.classList.add("grp-start");
+          td.classList.add("g-" + c[2].split(" ")[0]);
           td.textContent = vals[c[1]] === undefined || vals[c[1]] === null ? "" : String(vals[c[1]]);
         });
       }
@@ -544,7 +585,26 @@
   const again = $("g-decide-btn");
   if (again) again.addEventListener("click", function () { decideAll(); renderAll(); showGSub("result"); });
   const clr = $("g-clear-history");
-  if (clr) clr.addEventListener("click", clearHistory);
+  if (clr) clr.addEventListener("click", function () {
+    const n = readHistory().length;
+    const msg = $("g-clear-message");
+    if (n === 0) { if (msg) msg.textContent = "There are no saved gradient runs to clear."; return; }
+    if (msg) msg.textContent = "";
+    $("g-clear-question").textContent = "Delete all " + n + (n === 1 ? " saved gradient run?" : " saved gradient runs?");
+    $("g-clear-confirm").hidden = false;
+    clr.hidden = true;
+  });
+  const cno = $("g-clear-no");
+  if (cno) cno.addEventListener("click", function () { $("g-clear-confirm").hidden = true; clr.hidden = false; });
+  const cyes = $("g-clear-yes");
+  if (cyes) cyes.addEventListener("click", function () {
+    const n = readHistory().length;
+    shownChrom.clear();
+    clearHistory();
+    $("g-clear-confirm").hidden = true;
+    clr.hidden = false;
+    $("g-clear-message").textContent = "Cleared " + n + (n === 1 ? " run." : " runs.") + " The gradient history is empty.";
+  });
   loadSpecs();
   decideAll();
   renderAll();

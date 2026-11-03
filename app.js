@@ -754,9 +754,9 @@ try { Object.assign(colGroups, JSON.parse(localStorage.getItem(COL_GROUPS_KEY) |
 function applyColGroups() {
   const box = document.getElementById("history-container");
   if (box) Object.keys(colGroups).forEach(function (g) { box.classList.toggle("hide-" + g, !colGroups[g]); });
-  document.querySelectorAll(".col-group-btn").forEach(function (b) { b.setAttribute("aria-pressed", colGroups[b.dataset.group] ? "true" : "false"); });
+  document.querySelectorAll(".col-group-btn:not(.g-colbtn)").forEach(function (b) { b.setAttribute("aria-pressed", colGroups[b.dataset.group] ? "true" : "false"); });
 }
-document.querySelectorAll(".col-group-btn").forEach(function (b) {
+document.querySelectorAll(".col-group-btn:not(.g-colbtn)").forEach(function (b) {
   b.addEventListener("click", function () {
     colGroups[b.dataset.group] = !colGroups[b.dataset.group];
     try { localStorage.setItem(COL_GROUPS_KEY, JSON.stringify(colGroups)); } catch (err) { /* ignore */ }
