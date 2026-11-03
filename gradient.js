@@ -75,6 +75,152 @@ function parseGradientName(name) {
     return { conditions: conditions, gradient: gradient, warnings: warnings.concat(baseWarnings) };
 }
 
+// ---------------------------------------------------------------------------
+// Reading the gradient conditions from inside the file (when the file itself has no useful name).
+// Sources, in order: the name fields LabSolutions writes (Sample Name, Data File, Method File,
+// Original Data File, Sample ID) parsed like a file name; then a gradient time program; then
+// the %B trace (B.Conc) recorded during the run.
+// ---------------------------------------------------------------------------
+const NAME_FIELD_PATTERNS = [/^sample name$/i, /^data file( name)?$/i, /^method file( name)?$/i, /^original data file( name)?$/i, /^sample id$/i, /^data name$/i];
+
+function baseName(v) {
+    return String(v || "").trim().replace(/^.*[\\/]/, "").replace(/\.(lcd|lcm|csv|txt|xlsx?|pdf)$/i, "");
+}
+
+function gradientNamesInFile(lines) {
+    const out = [];
+    for (const f of lines) {
+        if (!f || f.length < 2) continue;
+        const key = String(f[0] || "").trim();
+        if (!NAME_FIELD_PATTERNS.some(function (re) { return re.test(key); })) continue;
+        const value = baseName(f[1]);
+        if (value) out.push({ field: key, value: value });
+    }
+    return out;
+}
+
+// %B program from a list of [time, %B] points: hold, start %B, end %B and tG.
+function rampFromPoints(points) {
+    const pts = points.filter(function (p) { return Number.isFinite(p[0]) && Number.isFinite(p[1]); }).sort(function (a, b) { return a[0] - b[0]; });
+    if (pts.length < 2) return null;
+    const first = pts.slice(0, Math.min(5, pts.length)).map(function (p) { return p[1]; }).sort(function (a, b) { return a - b; });
+    const bIni = first[Math.floor(first.length / 2)];
+    const bFin = Math.max.apply(null, pts.map(function (p) { return p[1]; }));
+    if (!(bFin - bIni >= 2)) return null;
+    const startPt = pts.find(function (p) { return p[1] > bIni + 0.5; });
+    const endPt = pts.find(function (p) { return p[1] >= bFin - 0.5; });
+    if (!startPt || !endPt) return null;
+    // The ramp starts at the last point still at %B ini before the rise.
+    const startIdx = pts.indexOf(startPt);
+    const start = startIdx > 0 ? pts[startIdx - 1][0] : startPt[0];
+    const tG = endPt[0] - start;
+    if (!(tG > 0)) return null;
+    return { bIni: gRound(bIni, 1), bFin: gRound(bFin, 1), tG: gRound(tG, 2), hold: gRound(start, 2) };
+}
+
+// A time program table: a header row with Time, Command (or Action/Event) and Value columns,
+// rows whose command mentions B concentration.
+function gradientFromTimeProgram(lines) {
+    for (let i = 0; i < lines.length; i++) {
+        const h = (lines[i] || []).map(function (c) { return String(c || "").trim().toLowerCase(); });
+        const ti = h.findIndex(function (c) { return /^time/.test(c); });
+        const ci = h.findIndex(function (c) { return /command|action|event/.test(c); });
+        const vi = h.findIndex(function (c) { return /^value/.test(c); });
+        if (ti === -1 || ci === -1 || vi === -1) continue;
+        const pts = [];
+        for (let j = i + 1; j < lines.length; j++) {
+            const r = lines[j] || [];
+            if (!r.length || r.every(function (c) { return String(c || "").trim() === ""; })) break;
+            if (/b\.?\s*conc|conc\.?\s*b/i.test(String(r[ci] || ""))) pts.push([Number(r[ti]), Number(r[vi])]);
+        }
+        if (pts.length) {
+            if (!pts.some(function (p) { return p[0] === 0; })) {
+                // %B before the first command is the starting %B (the hold).
+                pts.unshift([0, pts[0][1]]);
+            }
+            const ramp = rampFromPoints(pts);
+            if (ramp) return ramp;
+        }
+    }
+    return null;
+}
+
+// The %B trace recorded during the run, e.g. [LC Status Trace(B.Conc)].
+function gradientFromTrace(lines) {
+    const start = lines.findIndex(function (f) { return /^\[.*b\.?\s*conc/i.test(String((f || [])[0] || "")); });
+    if (start === -1) return null;
+    let mult = 1;
+    let i = start + 1;
+    while (i < lines.length && String((lines[i] || [])[0] || "") !== "R.Time (min)") {
+        if (/intensity multiplier/i.test(String(lines[i][0] || ""))) { const m = Number(lines[i][1]); if (Number.isFinite(m) && m > 0) mult = m; }
+        if (/^\[/.test(String(lines[i][0] || ""))) return null;
+        i++;
+    }
+    i++;
+    const pts = [];
+    while (i < lines.length && lines[i] && String(lines[i][0] || "") !== "" && !/^\[/.test(String(lines[i][0]))) {
+        pts.push([Number(lines[i][0]), Number(lines[i][1]) * mult]);
+        i++;
+    }
+    return rampFromPoints(pts);
+}
+
+function flowFromFile(lines) {
+    for (const f of lines) {
+        if (!f || f.length < 2) continue;
+        if (/^(total )?flow( rate)?(\s*\(ml\/min\))?$/i.test(String(f[0] || "").trim())) {
+            const v = parseFloat(f[1]);
+            if (Number.isFinite(v) && v > 0) return v;
+        }
+    }
+    return null;
+}
+
+// Fill in a gradient run's conditions from inside the file. `parsed` is what the file name gave.
+// Returns { parsed, sources: [text], warnings: [text], nameUsed }.
+function gradientConditionsFromFile(lines, fileNameParsed) {
+    const parsed = { conditions: Object.assign({}, fileNameParsed.conditions), gradient: Object.assign({}, fileNameParsed.gradient), warnings: [] };
+    const sources = [];
+    const warnings = [];
+    let nameUsed = null;
+    const complete = function (g) { return g.bIni !== null && g.bFin !== null && g.tG !== null && g.F !== null; };
+    const hasName = !!parsed.conditions.columnDimensions && complete(parsed.gradient);
+    if (!hasName) {
+        for (const n of gradientNamesInFile(lines)) {
+            const p = parseGradientName(n.value);
+            const usable = !!p.conditions.columnDimensions || p.gradient.bIni !== null;
+            if (!usable || !/GRA/i.test(n.value)) continue;
+            nameUsed = n;
+            ["bIni", "bFin", "tG", "F"].forEach(function (k) { if (parsed.gradient[k] === null && p.gradient[k] !== null) parsed.gradient[k] = p.gradient[k]; });
+            Object.keys(p.conditions).forEach(function (k) { if (!parsed.conditions[k] && p.conditions[k]) parsed.conditions[k] = p.conditions[k]; });
+            sources.push("the " + n.field + " inside the file (" + n.value + ")");
+            break;
+        }
+    }
+    // The %B program actually run: time program, then the %B trace. Used to fill gaps and to cross-check.
+    const prog = gradientFromTimeProgram(lines);
+    const trace = prog ? null : gradientFromTrace(lines);
+    const ramp = prog || trace;
+    let hold = null;
+    if (ramp) {
+        const what = prog ? "the gradient time program in the file" : "the %B trace recorded in the file";
+        const filled = [];
+        ["bIni", "bFin", "tG"].forEach(function (k) {
+            if (parsed.gradient[k] === null) { parsed.gradient[k] = ramp[k]; filled.push(k); }
+            else if (Math.abs(parsed.gradient[k] - ramp[k]) > (k === "tG" ? 0.5 : 1)) {
+                warnings.push("The name says " + ({ bIni: "%B ini", bFin: "%B fin", tG: "tG" })[k] + " = " + parsed.gradient[k] + ", but " + what + " shows " + ramp[k] + ". Check which is right; the name is used.");
+            }
+        });
+        hold = ramp.hold;
+        if (filled.length) sources.push(what + " (" + filled.map(function (k) { return ({ bIni: "%B ini", bFin: "%B fin", tG: "tG" })[k]; }).join(", ") + ")");
+    }
+    if (parsed.gradient.F === null) {
+        const f = flowFromFile(lines);
+        if (f !== null) { parsed.gradient.F = f; sources.push("the flow rate field in the file"); }
+    }
+    return { parsed: parsed, sources: sources, warnings: warnings, nameUsed: nameUsed, hold: hold };
+}
+
 // %B in the column when a peak elutes.
 function percentBAt(t, run, specs) {
     const slope = (run.bFin - run.bIni) / run.tG;
@@ -140,6 +286,7 @@ function nextGradientSelectivity(run, history) {
 //   history: every gradient run loaded (any order); only runs up to and including this one are used.
 function decideGradient(run, history, specsIn) {
     const specs = Object.assign({}, GRADIENT_DEFAULTS, specsIn || {});
+    if (run && typeof run.hold === "number" && run.hold >= 0) specs.hold = run.hold;
     const out = { run: run };
     const Vm = gradientVm(run.columnDimensions);
     const missing = [];
@@ -309,8 +456,8 @@ function decideGradient(run, history, specsIn) {
 }
 
 if (typeof window !== "undefined") {
-    window.hplcGradient = { decide: decideGradient, parseName: parseGradientName, GS: gradientSteepness, Vm: gradientVm, defaults: GRADIENT_DEFAULTS, percentBAt: percentBAt, sort: sortGradientRuns };
+    window.hplcGradient = { fromFile: gradientConditionsFromFile, decide: decideGradient, parseName: parseGradientName, GS: gradientSteepness, Vm: gradientVm, defaults: GRADIENT_DEFAULTS, percentBAt: percentBAt, sort: sortGradientRuns };
 }
 if (typeof module !== "undefined") {
-    module.exports = { decideGradient, parseGradientName, gradientSteepness, gradientVm, GRADIENT_DEFAULTS, percentBAt, sortGradientRuns };
+    module.exports = { gradientConditionsFromFile, rampFromPoints, decideGradient, parseGradientName, gradientSteepness, gradientVm, GRADIENT_DEFAULTS, percentBAt, sortGradientRuns };
 }

@@ -90,14 +90,26 @@
   function recordFromText(text, fileName) {
     const lines = splitIntoLines(text);
     const name = stripExt(fileName);
-    const parsed = G.parseName(name);
+    const fromName = G.parseName(name);
+    const inside = G.fromFile(lines, fromName);
+    const parsed = inside.parsed;
     const tbl = findPeakTable(lines);
     const summary = summarizeRun(tbl.peaks);
     const bp = findMaxBackPressure(lines);
     const c = parsed.conditions || {};
-    const warnings = parsed.warnings.slice();
+    const nameHasGradient = /(^|-)GRA(D)?(-|$)/i.test(name);
+    // Warnings about the file name only matter when the conditions come from it.
+    const warnings = nameHasGradient ? fromName.warnings.slice() : [];
+    if (inside.sources.length) warnings.unshift("Read from " + inside.sources.join(", and ") + ", because the file name doesn't give them. Check them below.");
+    inside.warnings.forEach(function (w) { warnings.push(w); });
+    const missing = [];
+    if (parsed.gradient.bIni === null || parsed.gradient.bFin === null) missing.push("%B ini and %B fin");
+    if (parsed.gradient.tG === null) missing.push("tG");
+    if (parsed.gradient.F === null) missing.push("flow rate");
+    if (!c.columnDimensions) missing.push("column dimensions");
+    if (missing.length) warnings.unshift("Couldn't find " + missing.join(", ") + " in the file name or inside the file. Type them into the table and press Save.");
     const sampleName = findSampleName(lines);
-    if (sampleName && stripExt(sampleName) !== name) warnings.push("The Sample Name inside the file (" + sampleName + ") doesn't match the file name. Check the file belongs to this run.");
+    if (nameHasGradient && sampleName && stripExt(sampleName) !== name) warnings.push("The Sample Name inside the file (" + sampleName + ") doesn't match the file name. Check the file belongs to this run.");
     if (tbl.declaredCount !== null && tbl.declaredCount !== tbl.peaks.length) warnings.push("The file says it has " + tbl.declaredCount + " peaks, but " + tbl.peaks.length + " rows were read.");
     if (!bp) warnings.push("No pump pressure trace was found, so back pressure couldn't be checked.");
     return {
@@ -109,6 +121,8 @@
       numPeaks: summary.numPeaks, peakTimes: tbl.peaks.map(function (p) { return p.rTime; }).filter(function (v) { return typeof v === "number"; }),
       minResolution: summary.minResolution, trLastPeak: summary.trLastPeak, t0: summary.t0,
       maxPressure: bp && Number.isFinite(bp.maxActual) ? bp.maxActual : null,
+      hold: typeof inside.hold === "number" ? inside.hold : null,
+      nameForNext: nameHasGradient ? name : (inside.nameUsed ? inside.nameUsed.value : name),
       peaks: tbl.peaks, rawPeaks: tbl.peaks, warnings: warnings,
     };
   }
@@ -211,7 +225,7 @@
 
   function nextFileName(rec, n) {
     if (!n) return "";
-    const name = rec.fileName;
+    const name = rec.nameForNext || rec.fileName;
     const t = name.split("-");
     const mi = t.findIndex(function (x) { return /^GRA(D)?$/i.test(x); });
     if (mi === -1) return "";
