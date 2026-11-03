@@ -90,11 +90,17 @@ function axisNumber(v) {
   return String(Number(v.toFixed(2)));
 }
 
-function chromatogramSVG(trace, peaks, label, pumps, detectorName) {
+// bprog (optional, gradient runs): { bIni, bFin, tG, hold } drawn as the %B line on the % axis.
+function chromatogramSVG(trace, peaks, label, pumps, detectorName, bprog) {
   trace = normaliseSignal(trace);
   const W = 1000, H = 420, L = 78, R = 128, T = 82, B = 56, pw = W - L - R, ph = H - T - B;
   const d = thin(trace, 2000), t = d.t, y = d.y;
-  const t0 = Math.min.apply(null, t), t1 = Math.max.apply(null, t);
+  const t0 = Math.min.apply(null, t);
+  let t1 = Math.max.apply(null, t);
+  // A gradient run: show the axis to the end of the ramp, so the whole %B programme is visible.
+  if (bprog && [bprog.tG].every(function (v) { return typeof v === "number" && Number.isFinite(v); })) {
+    t1 = Math.max(t1, (typeof bprog.hold === "number" ? bprog.hold : 2) + bprog.tG + 0.5);
+  }
   let ymax = Math.max.apply(null, y); if (!(ymax > 0)) ymax = 1;
   const nice = function (span, n) { const raw = span / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p; return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p; };
   const ys = nice(ymax * 1.12, 4), yTop = Math.ceil(ymax * 1.08 / ys) * ys, yBot = -ys * 0.2;
@@ -127,7 +133,16 @@ function chromatogramSVG(trace, peaks, label, pumps, detectorName) {
   s += '<line x1="' + xq + '" y1="' + T + '" x2="' + xq + '" y2="' + e(y0px) + '" stroke="#8896a3"/><text x="' + (xq + 6) + '" y="' + (T - 10) + '" font-size="12">%</text>';
   for (let v = 0; v <= 100; v += 25) { const yy = y0px - (v / 100) * (y0px - T); s += '<line x1="' + xq + '" y1="' + e(yy) + '" x2="' + (xq + 5) + '" y2="' + e(yy) + '" stroke="#8896a3"/><text x="' + (xq + 8) + '" y="' + e(yy + 4) + '" font-size="12">' + v + "</text>"; }
   // legend (colour keys)
-  const lg = [[detectorName, "#1b5fc1", ""]].concat(pumps[0] ? [["Pump A Pressure", "#f08a00", "6 4"]] : [], pumps[1] ? [["Pump B Pressure", "#b85c00", "6 4"]] : []);
+  const lg = [[detectorName, "#1b5fc1", ""]].concat(pumps[0] ? [["Pump A Pressure", "#f08a00", "6 4"]] : [], pumps[1] ? [["Pump B Pressure", "#b85c00", "6 4"]] : [], bprog ? [["%B (gradient)", "#2e7d4f", ""]] : []);
+  // the %B programme of a gradient run (right % axis)
+  if (bprog && [bprog.bIni, bprog.bFin, bprog.tG].every(function (v) { return typeof v === "number" && Number.isFinite(v); })) {
+    const hold = typeof bprog.hold === "number" ? bprog.hold : 2;
+    const bPx = function (b) { return y0px - (Math.max(0, Math.min(100, b)) / 100) * (y0px - T); };
+    const pts = [[t0, bprog.bIni], [hold, bprog.bIni], [hold + bprog.tG, bprog.bFin], [t1, bprog.bFin]].filter(function (p) { return p[0] >= t0 - 1e-9; });
+    let dd = "";
+    pts.forEach(function (p) { const tt = Math.min(Math.max(p[0], t0), t1); dd += (dd ? "L" : "M") + e(X(tt)) + " " + e(bPx(p[1])); });
+    s += '<path d="' + dd + '" fill="none" stroke="#2e7d4f" stroke-width="2" opacity=".85"/>';
+  }
   { const widths = lg.map(function (n) { return n[0].length * 6.6 + 48; }), total = widths.reduce(function (a, b) { return a + b; }, 0); let x = L + pw / 2 - total / 2;
     lg.forEach(function (n, i) { s += '<line x1="' + e(x) + '" y1="52" x2="' + e(x + 24) + '" y2="52" stroke="' + n[1] + '" stroke-width="2"' + (n[2] ? ' stroke-dasharray="' + n[2] + '"' : "") + '/><text x="' + e(x + 30) + '" y="56" font-size="12" fill="#16232e">' + n[0] + "</text>"; x += widths[i]; }); }
   // pressure traces (right axis)
@@ -198,9 +213,9 @@ function buildChromData(lines, peaks) {
   return data;
 }
 
-function chromatogramSVGFromData(data, label) {
+function chromatogramSVGFromData(data, label, bprog) {
   const trace = data.real ? { t: data.t, y: data.y, units: data.units, title: data.title } : rebuildTrace(data.peaks);
   if (!trace) return "";
   const name = data.real ? data.title.replace(/^PDA Multi Chromatogram\s*/i, "PDA Multi ") : "Detector (rebuilt)";
-  return chromatogramSVG(trace, data.peaks, label, [data.pumpA, data.pumpB], name);
+  return chromatogramSVG(trace, data.peaks, label, [data.pumpA, data.pumpB], name, bprog);
 }

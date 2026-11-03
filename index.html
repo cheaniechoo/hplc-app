@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>HPLC method development assistant</title>
-  <link rel="stylesheet" href="style.css?v=20261103-1835b">
+  <link rel="stylesheet" href="style.css?v=20261103-1905">
 </head>
 <body>
 
@@ -33,6 +33,7 @@
     <div class="nav-group" data-group="flowchart"><button id="tab-flowchart" class="tab-button" type="button" aria-controls="panel-flowchart" aria-selected="false">Isocratic dashboard</button></div>
     <div class="nav-group" data-group="history"><button id="tab-history" class="tab-button" type="button" aria-controls="panel-history" aria-selected="false">Isocratic run history</button></div>
     <div class="nav-group" data-group="gradient"><button id="tab-gradient" class="tab-button" type="button" aria-controls="panel-gradient" aria-selected="false">Gradient dashboard</button></div>
+    <div class="nav-group" data-group="ghistory"><button id="tab-ghistory" class="tab-button" type="button" aria-controls="panel-ghistory" aria-selected="false">Gradient run history</button></div>
     <div class="nav-group" data-group="equipment"><button id="tab-equipment" class="tab-button" type="button" aria-controls="panel-equipment" aria-selected="false">Equipment</button></div>
     <div class="nav-group" data-group="naming"><button id="tab-naming" class="tab-button" type="button" aria-controls="panel-naming" aria-selected="false">Naming guide</button></div>
   </nav>
@@ -208,7 +209,7 @@
   </main>
 
   <main id="panel-gradient" class="tab-panel" role="tabpanel" aria-labelledby="tab-gradient" hidden>
-    <nav class="sub-bar" aria-label="Gradient dashboard steps"><button type="button" class="gsub-button" data-gsub="spec">1  Specification</button><button type="button" class="gsub-button" data-gsub="upload">2  Upload and conditions</button><button type="button" class="gsub-button" data-gsub="result">3  Decision</button><button type="button" class="gsub-button" data-gsub="history">4  Gradient run history</button></nav>
+    <nav class="sub-bar" aria-label="Gradient dashboard steps"><button type="button" class="gsub-button" data-gsub="spec">1  Specification</button><button type="button" class="gsub-button" data-gsub="upload">2  Upload and conditions</button><button type="button" class="gsub-button" data-gsub="peaks">3  Peak table</button><button type="button" class="gsub-button" data-gsub="result">4  Decision</button></nav>
 
     <section data-gsub-panel="spec" aria-labelledby="g-spec-heading">
       <h2 id="g-spec-heading">Gradient specification</h2>
@@ -238,12 +239,23 @@
 
     <section data-gsub-panel="upload" aria-labelledby="g-upload-heading">
       <h2 id="g-upload-heading">Gradient run files</h2>
-      <label for="g-file">Choose one or more gradient run exports (.csv or Excel). The file name gives %B ini, %B fin, tG and flow after GRA, e.g. &hellip;-ACN-3-GRA-5-100-20-1.5-20u-CP-0.1-C18-P-150x4.6x5-amb-254.</label>
+      <label for="g-file">Choose one or more gradient run exports, as .csv or Excel (.xlsx, .xls) files (one file, one run). You can select several at once.</label>
       <input id="g-file" type="file" accept=".csv,text/csv,.xlsx,.xls" multiple>
+      <p class="hint">%B ini, %B fin, tG and flow come from the file name (after GRA, e.g. &hellip;-GRA-5-100-20-1.5-&hellip;) or, if the file isn't named, from inside the file. The decision appears in step 4 and in the Current run panel.</p>
       <p id="g-upload-status" role="status"></p>
-      <h3>Run conditions</h3>
+      <div class="calc-row"><button id="g-decide-btn" type="button" disabled>Decide again</button><span class="hint">Decisions are made automatically when files load. Press this after you change a condition below.</span></div>
+    </section>
+
+    <section data-gsub-panel="upload" aria-labelledby="g-conditions-heading">
+      <h2 id="g-conditions-heading">Run conditions</h2>
+      <p class="hint">Read automatically from the file. Check them, correct anything wrong, and press Save.</p>
       <div id="g-conditions"><p class="empty">No gradient file loaded yet.</p></div>
-      <h3>Peak table</h3>
+    </section>
+
+    <section data-gsub-panel="peaks" aria-labelledby="g-peaks-heading">
+      <h2 id="g-peaks-heading">Peak table</h2>
+      <p id="g-pressure-readout" class="hint"></p>
+      <div id="g-chrom" class="chrom-run"><p class="empty">No gradient file loaded yet.</p></div>
       <div id="g-peaks" class="table-scroll"><p class="empty">No gradient file loaded yet.</p></div>
     </section>
 
@@ -252,11 +264,15 @@
       <div id="g-result"></div>
     </section>
 
-    <section data-gsub-panel="history" aria-labelledby="g-history-heading">
+    <aside id="g-run-summary" class="run-summary" aria-label="Current gradient run summary"></aside>
+  </main>
+
+  <main id="panel-ghistory" class="tab-panel" role="tabpanel" aria-labelledby="tab-ghistory" hidden>
+    <section aria-labelledby="g-history-heading">
       <h2 id="g-history-heading">Gradient run history</h2>
-      <p class="hint">Runs in run order. Under each run, the conditions of the next run are pre-filled with their GS. Click a run to see its decision.</p>
-      <div id="g-history"></div>
-      <button type="button" id="g-clear-history" class="secondary">Clear the gradient history</button>
+      <p class="hint">Every gradient run in run order, laid out like the course table: conditions, then responses, then the decision. Under each run, the next run's conditions are pre-filled with their GS. Click a run's name to open it on the dashboard.</p>
+      <div class="history-tools"><button type="button" id="g-clear-history" class="secondary">Clear the gradient history</button></div>
+      <div id="g-history-container"></div>
     </section>
   </main>
 
@@ -474,21 +490,21 @@
     </section>
   </main>
 
-  <script src="equipment-data.js?v=20261103-1835b"></script>
-  <script src="efficiency.js?v=20261103-1835b"></script>
-  <script src="logic.js?v=20261103-1835b"></script>
-  <script src="monash-columns.js?v=20261103-1835b"></script>
-  <script src="user-columns.js?v=20261103-1835b"></script>
-  <script src="module-howto.js?v=20261103-1835b"></script>
-  <script src="chromatogram.js?v=20261103-1835b"></script>
-  <script src="logk-chart.js?v=20261103-1835b"></script>
-  <script src="gradient.js?v=20261103-1835b"></script>
-  <script src="app.js?v=20261103-1835b"></script>
-  <script src="gradient-app.js?v=20261103-1835b"></script>
-  <script src="guide-figures.js?v=20261103-1835b"></script>
-  <script src="flowchart.js?v=20261103-1835b"></script>
-  <script src="ligand-structures.js?v=20261103-1835b"></script>
-  <script src="equipment-interactive.js?v=20261103-1835b"></script>
-  <script src="nav.js?v=20261103-1835b"></script>
+  <script src="equipment-data.js?v=20261103-1905"></script>
+  <script src="efficiency.js?v=20261103-1905"></script>
+  <script src="logic.js?v=20261103-1905"></script>
+  <script src="monash-columns.js?v=20261103-1905"></script>
+  <script src="user-columns.js?v=20261103-1905"></script>
+  <script src="module-howto.js?v=20261103-1905"></script>
+  <script src="chromatogram.js?v=20261103-1905"></script>
+  <script src="logk-chart.js?v=20261103-1905"></script>
+  <script src="gradient.js?v=20261103-1905"></script>
+  <script src="app.js?v=20261103-1905"></script>
+  <script src="gradient-app.js?v=20261103-1905"></script>
+  <script src="guide-figures.js?v=20261103-1905"></script>
+  <script src="flowchart.js?v=20261103-1905"></script>
+  <script src="ligand-structures.js?v=20261103-1905"></script>
+  <script src="equipment-interactive.js?v=20261103-1905"></script>
+  <script src="nav.js?v=20261103-1905"></script>
 </body>
 </html>

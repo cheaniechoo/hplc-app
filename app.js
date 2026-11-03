@@ -19,6 +19,7 @@ const MAIN_TABS = {
   guide: ["tab-guide", "panel-guide"],
   flowchart: ["tab-flowchart", "panel-flowchart"],
   gradient: ["tab-gradient", "panel-gradient"],
+  ghistory: ["tab-ghistory", "panel-ghistory"],
   history: ["tab-history", "panel-history"],
   equipment: ["tab-equipment", "panel-equipment"],
   naming: ["tab-naming", "panel-naming"],

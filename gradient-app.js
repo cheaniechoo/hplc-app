@@ -124,6 +124,7 @@
       hold: typeof inside.hold === "number" ? inside.hold : null,
       nameForNext: nameHasGradient ? name : (inside.nameUsed ? inside.nameUsed.value : name),
       peaks: tbl.peaks, rawPeaks: tbl.peaks, warnings: warnings,
+      chrom: typeof buildChromData === "function" ? buildChromData(lines, tbl.peaks) : null,
     };
   }
 
@@ -189,27 +190,109 @@
     box.replaceChildren(t, info, btn, warn);
   }
 
+  function bprogOf(rec) {
+    const specs = readSpecs();
+    return { bIni: rec.bIni, bFin: rec.bFin, tG: rec.tG, hold: typeof rec.hold === "number" ? rec.hold : specs.hold };
+  }
+  function chromSVG(rec) {
+    if (!rec || !rec.chrom || typeof chromatogramSVGFromData !== "function") return "";
+    return chromatogramSVGFromData(Object.assign({}, rec.chrom, { peaks: rec.peaks || rec.chrom.peaks }), rec.fileName, bprogOf(rec));
+  }
+
   function renderPeaks(rec) {
     const box = $("g-peaks");
+    const chromBox = $("g-chrom");
+    const pr = $("g-pressure-readout");
+    if (pr) pr.textContent = !rec ? "" : (typeof rec.maxPressure === "number" ? "Highest back pressure in this run: " + Math.round(rec.maxPressure) + " psi (limit " + readSpecs().maxPressure + " psi). In a gradient the pressure peaks mid-gradient." : "No pump pressure trace was found in this file.");
+    if (chromBox) {
+      if (!rec) chromBox.replaceChildren(mk("p", "empty", "No gradient file loaded yet."));
+      else {
+        const svgText = chromSVG(rec);
+        if (!svgText) chromBox.replaceChildren(mk("p", "empty", rec.chrom ? "No peaks to draw a chromatogram from." : "Load this file again to draw its chromatogram."));
+        else {
+          const note = mk("p", "hint", (rec.chrom.real ? "Detector trace read from the file. " : "No detector trace in this file, so the signal is rebuilt from the peak table. ") + "The number above each peak is its peak number and R.Time. The green line is the %B programme (hold, ramp from " + rec.bIni + " to " + rec.bFin + " %B over " + rec.tG + " min) on the % axis.");
+          const fig = mk("div", "run-chrom-wrap");
+          fig.innerHTML = svgText;
+          chromBox.replaceChildren(mk("h3", null, "Chromatogram"), note, fig);
+        }
+      }
+    }
     if (!box) return;
     if (!rec || !rec.peaks || !rec.peaks.length) { box.replaceChildren(mk("p", "empty", rec ? "No peak table found in this file." : "No gradient file loaded yet.")); return; }
-    const specs = readSpecs();
+    const specs = Object.assign(readSpecs(), { hold: bprogOf(rec).hold });
     const t = mk("table");
     const hr = t.createTHead().insertRow();
-    ["Peak", "tR (min)", "%B at elution", "Resolution", "Plates (N)"].forEach(function (x) { hr.appendChild(mk("th", null, x)); });
+    ["Peak #", "R.Time (min)", "%B at elution", "k'", "Plate #", "Tailing", "Resolution"].forEach(function (x) { hr.appendChild(mk("th", null, x)); });
     const b = t.createTBody();
+    const okRun = [rec.bIni, rec.bFin, rec.tG].every(function (v) { return typeof v === "number"; });
     rec.peaks.forEach(function (p) {
       const tr = b.insertRow();
       tr.insertCell().textContent = p.peakNum === null ? "" : p.peakNum;
       tr.insertCell().textContent = fmt(p.rTime, 3);
-      const okRun = [rec.bIni, rec.bFin, rec.tG].every(function (v) { return typeof v === "number"; });
       tr.insertCell().textContent = okRun && typeof p.rTime === "number" ? G.percentBAt(p.rTime, rec, specs).toFixed(1) : "";
+      tr.insertCell().textContent = fmt(p.kPrime, 3);
+      tr.insertCell().textContent = p.plateCount === null || p.plateCount === undefined ? "" : Math.round(p.plateCount);
+      tr.insertCell().textContent = fmt(p.tailing, 2);
       tr.insertCell().textContent = fmt(p.resolution, 2);
-      tr.insertCell().textContent = p.plateCount === null ? "" : Math.round(p.plateCount);
     });
-    const removedNote = rec.removedPeaks && rec.removedPeaks.length ? mk("p", "removed-peaks-note", "Removed as noise (not counted): " + rec.removedPeaks.map(function (p) { return "peak " + (p.peakNum === null ? "?" : p.peakNum) + " at " + fmt(p.rTime, 2) + " min (" + fmt(p.areaPercent, 2) + "% of total area)"; }).join("; ") + ".") : null;
-    if (removedNote) box.replaceChildren(removedNote);
-    box[removedNote ? "append" : "replaceChildren"](mk("p", "hint", "%B at elution = %B ini + (tR − " + specs.hold + " min hold) × (%B fin − %B ini) / tG." + (typeof rec.maxPressure === "number" ? " Highest back pressure: " + Math.round(rec.maxPressure) + " psi." : "")), t);
+    const parts = [];
+    if (rec.removedPeaks && rec.removedPeaks.length) parts.push(mk("p", "removed-peaks-note", "Removed as noise (not counted): " + rec.removedPeaks.map(function (p) { return "peak " + (p.peakNum === null ? "?" : p.peakNum) + " at " + fmt(p.rTime, 2) + " min (" + fmt(p.areaPercent, 2) + "% of total area)"; }).join("; ") + "."));
+    parts.push(mk("p", "hint", "%B at elution = %B ini + (tR \u2212 " + specs.hold + " min hold) \u00d7 (%B fin \u2212 %B ini) / tG."));
+    parts.push(t);
+    box.replaceChildren.apply(box, parts);
+  }
+
+  // ---------- rendering: Current run panel (like the isocratic one) ----------
+  function renderSummary(rec) {
+    const box = $("g-run-summary");
+    if (!box) return;
+    box.replaceChildren(mk("h2", null, "Current run"));
+    if (!rec) { box.appendChild(mk("p", "hint", "Load a gradient file in step 2 and its decision, GS, spec checks and conditions appear here.")); return; }
+    box.appendChild(mk("p", "rs-file", rec.fileName));
+    const d = rec.decision || {};
+    const dec = mk("div", "rs-decision" + (d.pass ? " pass" : "") + (d.unsafe ? " unsafe" : ""));
+    dec.appendChild(mk("span", "rs-label", "Decision"));
+    dec.appendChild(mk("strong", null, d.stage || ""));
+    dec.appendChild(mk("p", null, d.action || ""));
+    const open = mk("button", "secondary", "Open the decision");
+    open.type = "button";
+    open.addEventListener("click", function () { showGSub("result"); });
+    dec.appendChild(open);
+    box.appendChild(dec);
+    if (typeof d.GS === "number") {
+      const g = mk("div", "rs-minb rs-gs");
+      g.appendChild(mk("span", "rs-label", "Gradient steepness"));
+      g.appendChild(mk("strong", null, d.GS.toFixed(4) + (d.next ? " \u2192 " + d.next.GS.toFixed(4) : "")));
+      g.appendChild(mk("small", null, d.next ? (Math.abs(d.next.GS / d.GS - 1) < 0.01 ? "next run keeps GS: same selectivity" : d.next.GS > d.GS ? "next run: steeper (higher GS)" : "next run: shallower (lower GS)") : "this run"));
+      box.appendChild(g);
+    }
+    const specs = readSpecs();
+    box.appendChild(mk("h3", null, "Against your specification"));
+    const ul = mk("ul", "rs-checks");
+    const check = function (ok, label, value, sub) {
+      const li = mk("li", ok === true ? "ok" : ok === false ? "bad" : "");
+      li.appendChild(mk("span", "rs-mark", ok === true ? "\u2713" : ok === false ? "\u2715" : "\u2013"));
+      const t = mk("div");
+      t.appendChild(mk("span", "rs-label", label));
+      t.appendChild(mk("strong", null, value));
+      t.appendChild(mk("small", null, sub));
+      li.appendChild(t);
+      ul.appendChild(li);
+    };
+    const tr = rec.trLastPeak;
+    check(typeof tr === "number" ? tr <= specs.runTimeSpec : null, "Last peak tR", typeof tr === "number" ? tr.toFixed(2) + " min" : "?", "run-time spec " + specs.runTimeSpec + " min or less");
+    check(typeof rec.numPeaks === "number" ? rec.numPeaks === specs.targetPeaks : null, "Peaks found", String(rec.numPeaks === null || rec.numPeaks === undefined ? "?" : rec.numPeaks), "target " + specs.targetPeaks);
+    const rsShown = rec.numPeaks < specs.targetPeaks ? 0 : rec.minResolution;
+    check(typeof rsShown === "number" ? rsShown >= specs.rsSpec : null, "Worst Rs", typeof rsShown === "number" ? rsShown.toFixed(2) : "?", "spec " + specs.rsSpec + " or more" + (rec.numPeaks < specs.targetPeaks && typeof rec.minResolution === "number" ? " (peaks co-eluting; calculated " + rec.minResolution.toFixed(2) + ")" : ""));
+    check(typeof rec.maxPressure === "number" ? rec.maxPressure < specs.maxPressure : null, "Peak pressure", typeof rec.maxPressure === "number" ? Math.round(rec.maxPressure) + " psi" : "not in file", "max " + specs.maxPressure + " psi");
+    box.appendChild(ul);
+    box.appendChild(mk("h3", null, "Conditions read from the file"));
+    const dl = mk("dl", "rs-cond");
+    [["%B ini", rec.bIni], ["%B fin", rec.bFin], ["tG", rec.tG === null ? null : rec.tG + " min"], ["Hold", (typeof rec.hold === "number" ? rec.hold : specs.hold) + " min"], ["Flow rate", rec.F === null ? null : rec.F + " mL/min"], ["Solvent", rec.solvent], ["Temperature", rec.temperature], ["Ligand", rec.ligand], ["Column", rec.columnDimensions]].forEach(function (r) {
+      dl.appendChild(mk("dt", null, r[0]));
+      dl.appendChild(mk("dd", null, r[1] === null || r[1] === undefined || r[1] === "" ? "?" : String(r[1])));
+    });
+    box.appendChild(dl);
   }
 
   // ---------- rendering: decision ----------
@@ -333,44 +416,106 @@
     box.replaceChildren(card);
   }
 
-  // ---------- rendering: history ----------
+  // ---------- rendering: history (own tab, laid out like the isocratic run history) ----------
+  const shownChrom = new Set();
   function renderHistory() {
-    const box = $("g-history");
+    const box = $("g-history-container");
     if (!box) return;
     const h = G.sort(readHistory());
     if (!h.length) { box.replaceChildren(mk("p", "empty", "No gradient runs yet.")); return; }
     const specs = readSpecs();
-    const cols = ["Run", "Solvent", "Temp", "Ligand", "Column", "%B ini", "%B fin", "tG (min)", "F (mL/min)", "GS", "# Peaks", "Rs", "tR last (min)", "BP (psi)", "Case", "Action"];
+    const cols = [
+      ["Run", "run", "run"],
+      ["Ligand", "ligand", "cond"], ["Length (mm)", "L", "cond"], ["\u00d8 (mm)", "ID", "cond"], ["PS (\u00b5m)", "dp", "cond"],
+      ["Solvent", "solvent", "cond"], ["Temp (\u00b0C)", "temp", "cond"], ["%B ini", "bIni", "cond"], ["%B fin", "bFin", "cond"], ["tG (min)", "tG", "cond"], ["Flow (mL/min)", "F", "cond"],
+      ["# Peaks", "peaks", "resp first"], ["Run time (tR last, min)", "tr", "resp"], ["Resolution (Rmin)", "rs", "resp"], ["Back-pressure (psi)", "bp", "resp"], ["GS", "gs", "resp"],
+      ["Case", "case", "dec first"], ["Action", "action", "dec"], ["GS next run", "gsnext", "dec"], ["Chromatogram", "chrom", "dec"],
+    ];
+    const groups = [["", "run", 1], ["Run conditions", "cond", 10], ["Responses", "resp first", 5], ["Decision", "dec first", 4]];
     const wrap = mk("div", "table-scroll");
-    const t = mk("table", "hist-table g-hist");
-    const hr = t.createTHead().insertRow();
-    cols.forEach(function (c) { hr.appendChild(mk("th", null, c)); });
-    const b = t.createTBody();
+    const t = mk("table", "hist-table");
+    const head = t.createTHead();
+    const gr = head.insertRow(); gr.className = "hist-group-row";
+    groups.forEach(function (g) { const th = mk("th", (g[1].indexOf("first") !== -1 ? "grp-start " : "") + "g-" + g[1].split(" ")[0], g[0]); th.colSpan = g[2]; gr.appendChild(th); });
+    const hr = head.insertRow();
+    cols.forEach(function (c) { hr.appendChild(mk("th", (c[2].indexOf("first") !== -1 ? "grp-start " : "") + "g-" + c[2].split(" ")[0], c[0])); });
+    const body = t.createTBody();
     h.forEach(function (r) {
       const d = r.decision || {};
-      const tr = b.insertRow();
+      const dims = String(r.columnDimensions || "").split("x");
+      const tr = body.insertRow();
       tr.className = "hist-row" + (d.pass ? " st-pass" : "") + (d.unsafe ? " st-unsafe" : "") + (r.fileName === currentFile ? " g-current" : "");
-      const runCell = tr.insertCell();
-      runCell.appendChild(mk("strong", null, r.runNumber ? "R" + String(r.runNumber).replace(/^0+(?=\d)/, "").padStart(2, "0") : "?"));
-      runCell.appendChild(mk("small", "hist-file", r.fileName));
-      runCell.style.cursor = "pointer";
-      runCell.addEventListener("click", function () { currentFile = r.fileName; renderAll(); showGSub("result"); });
-      [r.solvent, r.temperature, r.ligand, r.columnDimensions, r.bIni, r.bFin, r.tG, r.F, typeof d.GS === "number" ? d.GS.toFixed(4) : "",
-        r.numPeaks, r.numPeaks < specs.targetPeaks ? "0" : fmt(r.minResolution, 2), fmt(r.trLastPeak, 2), typeof r.maxPressure === "number" ? Math.round(r.maxPressure) : "",
-        d.caseLabel || d.stage || "", d.action || ""].forEach(function (v, i) {
-        const c = tr.insertCell(); c.textContent = v === null || v === undefined ? "" : String(v);
-        if (i === 9 && typeof r.numPeaks === "number") c.className = r.numPeaks === specs.targetPeaks ? "spec-ok" : "spec-bad";
-        if (i === 10 && typeof r.minResolution === "number" && r.numPeaks >= specs.targetPeaks) c.className = r.minResolution >= specs.rsSpec ? "spec-ok" : "spec-bad";
+      cols.forEach(function (c) {
+        const td = tr.insertCell();
+        if (c[2].indexOf("first") !== -1) td.classList.add("grp-start");
+        td.classList.add("g-" + c[2].split(" ")[0]);
+        const put = function (v) { td.textContent = v === null || v === undefined ? "" : String(v); };
+        switch (c[1]) {
+          case "run": {
+            const n = String(r.runNumber || "").replace(/^0+(?=\d)/, "");
+            const btn = mk("button", "link-button", n ? "R" + n.padStart(2, "0") : "Run");
+            btn.type = "button";
+            btn.title = "Open this run on the gradient dashboard";
+            btn.addEventListener("click", function () { currentFile = r.fileName; renderAll(); const tab = $("tab-gradient"); if (tab) tab.click(); showGSub("result"); });
+            td.appendChild(btn);
+            td.appendChild(mk("small", "hist-file", r.fileName));
+            td.classList.add("hist-run");
+            break;
+          }
+          case "ligand": put(r.ligand); break;
+          case "L": put(dims[0]); break;
+          case "ID": put(dims[1]); break;
+          case "dp": put(dims[2]); break;
+          case "solvent": put(r.solvent); break;
+          case "temp": put(String(r.temperature || "").replace(/^T(?=\d)/i, "")); break;
+          case "bIni": put(r.bIni); break;
+          case "bFin": put(r.bFin); break;
+          case "tG": put(r.tG); break;
+          case "F": put(r.F); break;
+          case "peaks": put(r.numPeaks); if (typeof r.numPeaks === "number") td.classList.add(r.numPeaks === specs.targetPeaks ? "spec-ok" : "spec-bad"); break;
+          case "tr": put(fmt(r.trLastPeak, 2)); if (typeof r.trLastPeak === "number") td.classList.add(r.trLastPeak <= specs.runTimeSpec ? "spec-ok" : "spec-bad"); break;
+          case "rs": {
+            const shown = r.numPeaks < specs.targetPeaks ? 0 : r.minResolution;
+            put(typeof shown === "number" ? shown.toFixed(2) : "");
+            if (typeof shown === "number") td.classList.add(shown >= specs.rsSpec ? "spec-ok" : "spec-bad");
+            break;
+          }
+          case "bp": put(typeof r.maxPressure === "number" ? Math.round(r.maxPressure) : ""); if (typeof r.maxPressure === "number") td.classList.add(r.maxPressure < specs.maxPressure ? "spec-ok" : "spec-bad"); break;
+          case "gs": put(typeof d.GS === "number" ? d.GS.toFixed(4) : ""); break;
+          case "case": put(d.caseLabel || d.stage || ""); td.classList.add("hist-case"); break;
+          case "action": put(d.action || ""); td.classList.add("hist-result"); break;
+          case "gsnext": put(d.next ? d.next.GS.toFixed(4) : ""); break;
+          case "chrom": {
+            if (!r.chrom) { td.textContent = "Not stored"; td.className = "hist-pending"; break; }
+            const open = shownChrom.has(r.fileName);
+            const btn = mk("button", "secondary chrom-toggle", open ? "Hide" : "Show");
+            btn.type = "button";
+            btn.setAttribute("aria-expanded", open ? "true" : "false");
+            btn.addEventListener("click", function () { if (shownChrom.has(r.fileName)) shownChrom.delete(r.fileName); else shownChrom.add(r.fileName); renderHistory(); });
+            td.appendChild(btn);
+            break;
+          }
+        }
       });
+      if (shownChrom.has(r.fileName) && r.chrom) {
+        const cr = body.insertRow(); cr.className = "hist-chrom-row";
+        const cell = cr.insertCell(); cell.colSpan = cols.length;
+        const div = mk("div", "run-chrom-wrap");
+        div.innerHTML = chromSVG(r);
+        cell.appendChild(div);
+      }
       // The next run's conditions, pre-filled in the row below.
       if (d.next) {
         const n = d.next;
-        const nx = b.insertRow();
+        const nx = body.insertRow();
         nx.className = "g-next-row";
-        const c0 = nx.insertCell(); c0.textContent = "↳ Next run";
-        [n.solvent || r.solvent, n.temperature || r.temperature, n.ligand || r.ligand, n.columnDimensions || r.columnDimensions, n.bIni, n.bFin, n.tG, n.F, n.GS.toFixed(4)].forEach(function (v) { nx.insertCell().textContent = v === null || v === undefined ? "" : String(v); });
-        const rest = nx.insertCell(); rest.colSpan = 6;
-        rest.textContent = "GS " + (typeof d.GS === "number" ? d.GS.toFixed(4) : "?") + " → " + n.GS.toFixed(4) + (typeof n.predictedRs === "number" ? "; predicted Rs " + n.predictedRs.toFixed(2) : "");
+        const nd = String(n.columnDimensions || r.columnDimensions || "").split("x");
+        const vals = { run: "\u21b3 Next run", ligand: n.ligand || r.ligand, L: nd[0], ID: nd[1], dp: nd[2], solvent: n.solvent || r.solvent, temp: String(n.temperature || r.temperature || "").replace(/^T(?=\d)/i, ""), bIni: n.bIni, bFin: n.bFin, tG: n.tG, F: n.F, gs: n.GS.toFixed(4), rs: typeof n.predictedRs === "number" ? "\u2248 " + n.predictedRs.toFixed(2) : "", bp: typeof n.predictedBP === "number" ? "\u2248 " + Math.round(n.predictedBP) : "" };
+        cols.forEach(function (c) {
+          const td = nx.insertCell();
+          if (c[2].indexOf("first") !== -1) td.classList.add("grp-start");
+          td.textContent = vals[c[1]] === undefined || vals[c[1]] === null ? "" : String(vals[c[1]]);
+        });
       }
     });
     wrap.appendChild(t);
@@ -384,7 +529,10 @@
     renderConditions(rec);
     renderPeaks(rec);
     renderResult(rec);
+    renderSummary(rec);
     renderHistory();
+    const again = $("g-decide-btn");
+    if (again) again.disabled = !h.length;
   }
 
   // ---------- wiring ----------
@@ -393,6 +541,8 @@
   SPEC_FIELDS.map(function (f) { return $(f[1]); }).concat([$("g-adv-marker")]).forEach(function (el) {
     if (el) el.addEventListener("change", function () { saveSpecs(); decideAll(); renderAll(); });
   });
+  const again = $("g-decide-btn");
+  if (again) again.addEventListener("click", function () { decideAll(); renderAll(); showGSub("result"); });
   const clr = $("g-clear-history");
   if (clr) clr.addEventListener("click", clearHistory);
   loadSpecs();
