@@ -97,6 +97,11 @@
           <label for="spec-max-pressure">Max system pressure (psi)</label>
           <input id="spec-max-pressure" type="number" min="0" step="1" value="4000">
         </div>
+        <div class="field">
+          <label for="spec-min-area">Ignore peaks smaller than (% of total area)</label>
+          <input id="spec-min-area" type="number" min="0" step="0.1" value="1">
+          <p class="hint">Small integration blips left in the export are removed and not counted as peaks; you are told which ones. Set 0 to keep every peak.</p>
+        </div>
       </div>
       <h3 class="cols-heading">Your columns</h3>
       <p class="hint">Efficiency recommendations only use columns ticked here, with the same ligand as the run. It starts as the Monash column list (in the lab). Untick the ones you don't have and add any you could order; a column in the lab is preferred when two options both meet the specs. A Raptor (core-shell) column in the list switches the Rs floor to the SPP floor.</p>
@@ -186,6 +191,7 @@
         <div class="field"><label for="g-spec-rs">Resolution (Rs) spec</label><input id="g-spec-rs" type="number" min="0" step="0.1" value="1.4"></div>
         <div class="field"><label for="g-spec-runtime">Run-time spec: tR last peak (min)</label><input id="g-spec-runtime" type="number" min="0" step="0.5" value="15"></div>
         <div class="field"><label for="g-spec-pressure">Max system pressure (psi)</label><input id="g-spec-pressure" type="number" min="0" step="1" value="4000"></div>
+        <div class="field"><label for="g-spec-min-area">Ignore peaks smaller than (% of total area)</label><input id="g-spec-min-area" type="number" min="0" step="0.1" value="1"><p class="hint">Small integration blips are removed and not counted; you are told which ones. 0 keeps every peak.</p></div>
       </div>
       <details class="g-advanced">
         <summary>Advanced settings (optional): the rule factors</summary>

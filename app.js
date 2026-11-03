@@ -73,6 +73,9 @@ const specRs = document.getElementById("spec-rs");
 const specRsFloor = document.getElementById("spec-rs-floor");
 const specMinPercentB = document.getElementById("spec-min-percent-b");
 const specMaxPressure = document.getElementById("spec-max-pressure");
+const specMinArea = document.getElementById("spec-min-area");
+function readMinArea() { const v = specMinArea ? Number(specMinArea.value) : 0; return Number.isFinite(v) && v > 0 ? v : 0; }
+let currentRemovedPeaks = [];
 
 let currentSummary = null;
 let currentMaxBackPressure = null;
@@ -355,6 +358,11 @@ function handleFilesChosen(event) {
         statusText = "Loaded " + results.length + " files. Showing \u201c" + stripExtension(files[files.length - 1].name) + "\u201d; all " + results.length + " are in the run history with their results.";
         showUploadStatus(statusText, false);
       }
+      const removedTotal = loadedRuns.reduce(function (n, r) { return n + (r && r.removedPeaks ? r.removedPeaks : 0); }, 0);
+      if (removedTotal > 0) {
+        statusText += " " + removedTotal + " small noise peak" + (removedTotal === 1 ? " was" : "s were") + " removed (see Run conditions for details).";
+        showUploadStatus(statusText, false);
+      }
       if (lastProcessed) {
         calculateBtn.disabled = false;
         // Decide every run in the history again (new files can change the earlier runs' context), then show the last one loaded.
@@ -446,7 +454,12 @@ function processFileText(rawText, fileName) {
   const sampleName = findSampleName(lines);
 
   const { conditions, warnings } = parseConditionsFromName(nameToParse);
-  const { peaks, declaredCount } = findPeakTable(lines);
+  const table = findPeakTable(lines);
+  const declaredCount = table.declaredCount;
+  const rawPeaks = table.peaks;
+  const filt = filterSmallPeaks(rawPeaks, readMinArea());
+  const peaks = filt.kept;
+  currentRemovedPeaks = filt.removed;
   const summary = summarizeRun(peaks);
   const maxBackPressure = findMaxBackPressure(lines);
 
@@ -470,6 +483,8 @@ function processFileText(rawText, fileName) {
     temperature: conditions.temperature || null,
     ligand: conditions.ligand || null,
     maxPressure: maxBackPressure && Number.isFinite(maxBackPressure.maxActual) ? maxBackPressure.maxActual : null,
+    rawPeaks: rawPeaks.map(function (pk) { return { peakNum: pk.peakNum, rTime: pk.rTime, plateCount: pk.plateCount, resolution: pk.resolution, area: pk.area, height: pk.height, kPrime: pk.kPrime, tailing: pk.tailing }; }),
+    removedPeaks: filt.removed.length,
     timestamp: new Date().toISOString(),
     chrom: buildChromData(lines, peaks),
   });
@@ -478,11 +493,13 @@ function processFileText(rawText, fileName) {
   renderAllPeaks();
 
   renderNameMismatchAlert(sampleName, nameToParse);
-  if (declaredCount !== null && declaredCount !== peaks.length) {
+  if (declaredCount !== null && declaredCount !== rawPeaks.length) {
     warnings.push(
-      "The file says it has " + declaredCount + " peaks, but " + peaks.length + " rows were read from the peak table."
+      "The file says it has " + declaredCount + " peaks, but " + rawPeaks.length + " rows were read from the peak table."
     );
   }
+  const notice = smallPeaksNotice(filt);
+  if (notice) warnings.unshift(notice);
   if (peaks.length === 0) {
     warnings.push("No peak table was found in this file.");
   }
@@ -500,7 +517,7 @@ function processFileText(rawText, fileName) {
   renderPeaks(peaks);
   renderPressureReadout(maxBackPressure);
   renderRunChromatogram(lines, peaks, nameToParse);
-  lastRunRecord = { fileName: nameToParse, summary: summary, maxBackPressure: maxBackPressure, conditions: conditions };
+  lastRunRecord = { fileName: nameToParse, summary: summary, maxBackPressure: maxBackPressure, conditions: conditions, removedPeaks: filt.removed.length };
 
   resultContainer.replaceChildren();
   summaryOutcome = null;
@@ -577,11 +594,12 @@ function renderWarnings(warnings) {
   }
 }
 
-function renderPeaks(peaks) {
+function renderPeaks(peaks, removed) {
   if (peaks.length === 0) {
     peaksContainer.replaceChildren(makeEmptyMessage("No peaks were found in this file."));
     return;
   }
+  removed = removed || currentRemovedPeaks || [];
 
   const columns = [
     ["Peak #", "peakNum"],
@@ -605,12 +623,49 @@ function renderPeaks(peaks) {
     const tr = body.insertRow();
     for (const [, key] of columns) {
       const td = tr.insertCell();
-      td.textContent = peak[key] === null ? "" : peak[key];
+      const v = peak[key];
+      td.textContent = v === null || v === undefined ? "" : (key === "resolution" && typeof v === "number" ? Number(v.toFixed(3)) : v);
     }
   }
 
-  peaksContainer.replaceChildren(table);
+  if (!removed.length) { peaksContainer.replaceChildren(table); return; }
+  const note = document.createElement("p");
+  note.className = "removed-peaks-note";
+  note.textContent = "Removed as noise (not counted): " + removed.map(function (p) {
+    return "peak " + (p.peakNum === null ? "?" : p.peakNum) + " at " + (typeof p.rTime === "number" ? p.rTime.toFixed(2) : "?") + " min (" + (typeof p.areaPercent === "number" ? p.areaPercent.toFixed(2) : "?") + "% of total area)";
+  }).join("; ") + ".";
+  peaksContainer.replaceChildren(note, table);
 }
+
+// The noise threshold changed: re-filter every stored run from its raw peaks and decide again.
+function reapplyPeakFilter() {
+  const pct = readMinArea();
+  const h = readHistory();
+  let changed = false;
+  h.forEach(function (e) {
+    if (!Array.isArray(e.rawPeaks)) return;
+    const f = filterSmallPeaks(e.rawPeaks, pct);
+    const sm = summarizeRun(f.kept);
+    e.numPeaks = sm.numPeaks; e.trLastPeak = sm.trLastPeak; e.t0 = sm.t0; e.minResolution = sm.minResolution;
+    e.peakTimes = f.kept.map(function (pk) { return pk.rTime; }).filter(function (v) { return typeof v === "number"; });
+    e.removedPeaks = f.removed.length;
+    changed = true;
+    if (e.fileName === currentRunFileName) {
+      currentSummary = sm;
+      currentRemovedPeaks = f.removed;
+      renderPeaks(f.kept, f.removed);
+      const others = Array.from(conditionsWarnings.querySelectorAll("li")).map(function (li) { return li.textContent; }).filter(function (t) { return !/^Removed \d+ small peak/.test(t); });
+      const n = smallPeaksNotice(f);
+      renderWarnings(n ? [n].concat(others) : others);
+      if (lastRunRecord) lastRunRecord.summary = sm;
+    }
+  });
+  if (!changed) return;
+  writeHistory(h);
+  autoCalculateRuns(runRecordsFromHistory());
+  if (currentSummary) { autoCalculating = true; try { handleCalculate(); } finally { autoCalculating = false; } }
+}
+if (specMinArea) specMinArea.addEventListener("change", reapplyPeakFilter);
 
 function renderPressureReadout(maxBackPressure) {
   if (!maxBackPressure) {
@@ -2728,7 +2783,8 @@ showSub("spec");
 function appClearAll() {
   handleClearHistory();
   currentSummary = null; currentMaxBackPressure = null; currentConditions = null; currentRunFileName = null; lastRunRecord = null; lastSpecsUsed = null;
-  [specPeaks, specTr, specRs, specRsFloor, specMinPercentB, specMaxPressure].forEach(function (el) { if (el) el.value = el.defaultValue; });
+  [specPeaks, specTr, specRs, specRsFloor, specMinPercentB, specMaxPressure, specMinArea].forEach(function (el) { if (el) el.value = el.defaultValue; });
+  currentRemovedPeaks = [];
   conditionsContainer.replaceChildren(makeEmptyMessage("No file loaded yet."));
   conditionsWarnings.replaceChildren();
   peaksContainer.replaceChildren(makeEmptyMessage("No file loaded yet."));

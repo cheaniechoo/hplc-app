@@ -94,6 +94,63 @@ function findPeakTable(lines) {
     }
     return { peaks: peaks, declaredCount: declaredCount };
 }
+// Integration noise: small blips LabSolutions counts as peaks when they were not
+// removed before export. A peak whose area is below `minAreaPercent` % of the total
+// area of all peaks is removed. For a kept peak whose neighbour was removed, Rs is
+// recalculated against the previous kept peak: Rs = 2 (tR2 - tR1) / (Wb1 + Wb2),
+// with the base width from the plate number, Wb = 4 tR / sqrt(N).
+function filterSmallPeaks(rawPeaks, minAreaPercent) {
+    const peaks = (rawPeaks || []).map(function (p) { return Object.assign({}, p); });
+    const pct = Number(minAreaPercent);
+    const none = { kept: peaks, removed: [], recalculated: [], threshold: pct, basis: null };
+    if (peaks.length === 0 || !(pct > 0)) return none;
+    const useArea = peaks.every(function (p) { return typeof p.area === "number"; });
+    const useHeight = !useArea && peaks.every(function (p) { return typeof p.height === "number"; });
+    if (!useArea && !useHeight) return none;
+    const size = function (p) { return useArea ? p.area : p.height; };
+    const total = peaks.reduce(function (s, p) { return s + Math.max(size(p), 0); }, 0);
+    if (!(total > 0)) return none;
+    const kept = [];
+    const removed = [];
+    peaks.forEach(function (p) {
+        p.areaPercent = Math.max(size(p), 0) / total * 100;
+        (p.areaPercent < pct ? removed : kept).push(p);
+    });
+    if (kept.length === 0) return none;
+    const recalculated = [];
+    const baseWidth = function (p) { return typeof p.rTime === "number" && typeof p.plateCount === "number" && p.plateCount > 0 ? 4 * p.rTime / Math.sqrt(p.plateCount) : null; };
+    for (let i = 1; i < kept.length; i++) {
+        const prev = kept[i - 1];
+        const cur = kept[i];
+        if (peaks.indexOf(cur) - 1 === peaks.indexOf(prev)) continue;
+        const w1 = baseWidth(prev);
+        const w2 = baseWidth(cur);
+        const before = cur.resolution;
+        if (w1 !== null && w2 !== null && typeof cur.rTime === "number" && typeof prev.rTime === "number") {
+            cur.resolution = 2 * (cur.rTime - prev.rTime) / (w1 + w2);
+            recalculated.push({ rTime: cur.rTime, from: before, to: cur.resolution, computed: true });
+        } else {
+            recalculated.push({ rTime: cur.rTime, from: before, to: before, computed: false });
+        }
+    }
+    // If the first peak was noise, the new first peak has no neighbour before it.
+    if (peaks.indexOf(kept[0]) !== 0) kept[0].resolution = null;
+    return { kept: kept, removed: removed, recalculated: recalculated, threshold: pct, basis: useArea ? "area" : "height" };
+}
+
+// One sentence telling the user what was removed.
+function smallPeaksNotice(filt) {
+    if (!filt || !filt.removed.length) return null;
+    const n = filt.removed.length;
+    const times = filt.removed.map(function (p) { return typeof p.rTime === "number" ? p.rTime.toFixed(2) : "?"; }).join(", ");
+    let text = "Removed " + n + " small peak" + (n === 1 ? "" : "s") + " (each under " + filt.threshold + "% of the total peak " + filt.basis + ") at tR " + times + " min: these look like integration noise, not compounds, so they are not counted.";
+    const rc = filt.recalculated.filter(function (r) { return r.computed; });
+    if (rc.length) text += " Rs was recalculated for the peak" + (rc.length === 1 ? "" : "s") + " next to " + (n === 1 ? "it" : "them") + " (Wb = 4 tR/√N).";
+    if (filt.recalculated.some(function (r) { return !r.computed; })) text += " Some Rs values could not be recalculated (no plate number), so the exported value is kept.";
+    text += " Check against the PDF; you can change the threshold in the Specification.";
+    return text;
+}
+
 function readNumber(row, index) {
     if (index === -1 || index >= row.length) return null;
     const value = Number(row[index]);

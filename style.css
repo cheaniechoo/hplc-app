@@ -964,3 +964,4 @@ button.danger-outline:hover:not(:disabled) { background: var(--error); color: #f
 .g-hist td.spec-ok { color: var(--pass-border); font-weight: 600; }
 .g-hist td.spec-bad { color: var(--error); font-weight: 600; }
 .g-cases td, .g-cases th { font-size: .82rem; }
+.removed-peaks-note { margin: .5rem 0; padding: .5rem .75rem; border-left: 3px solid var(--warning-border); background: var(--warning-bg); font-size: .88rem; }

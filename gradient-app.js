@@ -20,7 +20,7 @@
 
   // ---------- specification ----------
   const SPEC_FIELDS = [
-    ["targetPeaks", "g-spec-peaks"], ["rsSpec", "g-spec-rs"], ["runTimeSpec", "g-spec-runtime"], ["maxPressure", "g-spec-pressure"],
+    ["targetPeaks", "g-spec-peaks"], ["rsSpec", "g-spec-rs"], ["runTimeSpec", "g-spec-runtime"], ["maxPressure", "g-spec-pressure"], ["minAreaPercent", "g-spec-min-area"],
     ["hold", "g-adv-hold"], ["tGMax", "g-adv-tgmax"], ["g1UpFactor", "g-adv-g1up"], ["g1DownFactor", "g-adv-g1down"], ["g2Factor", "g-adv-g2"],
     ["shrinkStartMargin", "g-adv-shrink-start"], ["shrinkEndMargin", "g-adv-shrink-end"],
   ];
@@ -60,9 +60,22 @@
 
   let currentFile = null;
 
+  // Remove small noise peaks from a run's raw peak table (threshold from the gradient specification).
+  function applyFilter(r, pct) {
+    if (!Array.isArray(r.rawPeaks)) return;
+    const f = filterSmallPeaks(r.rawPeaks, pct);
+    const sm = summarizeRun(f.kept);
+    r.peaks = f.kept;
+    r.removedPeaks = f.removed;
+    r.numPeaks = sm.numPeaks; r.minResolution = sm.minResolution; r.trLastPeak = sm.trLastPeak; r.t0 = sm.t0;
+    r.peakTimes = f.kept.map(function (p) { return p.rTime; }).filter(function (v) { return typeof v === "number"; });
+    r.filterNotice = smallPeaksNotice(f);
+  }
+
   function decideAll() {
     const h = readHistory();
     const specs = readSpecs();
+    h.forEach(function (r) { applyFilter(r, specs.minAreaPercent || 0); });
     h.forEach(function (r) { try { r.decision = G.decide(r, h, specs); delete r.decision.run; } catch (err) { r.decision = { caseId: "error", stage: "Could not decide", action: "", message: err.message }; } });
     writeHistory(h);
     return h;
@@ -96,7 +109,7 @@
       numPeaks: summary.numPeaks, peakTimes: tbl.peaks.map(function (p) { return p.rTime; }).filter(function (v) { return typeof v === "number"; }),
       minResolution: summary.minResolution, trLastPeak: summary.trLastPeak, t0: summary.t0,
       maxPressure: bp && Number.isFinite(bp.maxActual) ? bp.maxActual : null,
-      peaks: tbl.peaks, warnings: warnings,
+      peaks: tbl.peaks, rawPeaks: tbl.peaks, warnings: warnings,
     };
   }
 
@@ -117,7 +130,8 @@
       const decided = decideAll();
       const sorted = G.sort(decided);
       if (list.length > 1) currentFile = sorted[sorted.length - 1].fileName;
-      status("Loaded " + list.length + " gradient file" + (list.length === 1 ? "" : "s") + ". Showing “" + currentFile + "”.", false);
+      const removedN = decided.filter(function (r) { return list.some(function (f) { return stripExt(f.name) === r.fileName; }); }).reduce(function (n, r) { return n + (r.removedPeaks ? r.removedPeaks.length : 0); }, 0);
+      status("Loaded " + list.length + " gradient file" + (list.length === 1 ? "" : "s") + ". Showing “" + currentFile + "”." + (removedN ? " " + removedN + " small noise peak" + (removedN === 1 ? " was" : "s were") + " removed (see Upload and conditions for details)." : ""), false);
       renderAll();
       showGSub("result");
     }).catch(function (err) { status("A file couldn't be read. " + err.message, true); });
@@ -157,7 +171,7 @@
       showGSub("result");
     });
     const warn = mk("ul", "warnings");
-    (rec.warnings || []).forEach(function (w) { warn.appendChild(mk("li", null, w)); });
+    (rec.filterNotice ? [rec.filterNotice] : []).concat(rec.warnings || []).forEach(function (w) { warn.appendChild(mk("li", null, w)); });
     box.replaceChildren(t, info, btn, warn);
   }
 
@@ -179,7 +193,9 @@
       tr.insertCell().textContent = fmt(p.resolution, 2);
       tr.insertCell().textContent = p.plateCount === null ? "" : Math.round(p.plateCount);
     });
-    box.replaceChildren(mk("p", "hint", "%B at elution = %B ini + (tR − " + specs.hold + " min hold) × (%B fin − %B ini) / tG." + (typeof rec.maxPressure === "number" ? " Highest back pressure: " + Math.round(rec.maxPressure) + " psi." : "")), t);
+    const removedNote = rec.removedPeaks && rec.removedPeaks.length ? mk("p", "removed-peaks-note", "Removed as noise (not counted): " + rec.removedPeaks.map(function (p) { return "peak " + (p.peakNum === null ? "?" : p.peakNum) + " at " + fmt(p.rTime, 2) + " min (" + fmt(p.areaPercent, 2) + "% of total area)"; }).join("; ") + ".") : null;
+    if (removedNote) box.replaceChildren(removedNote);
+    box[removedNote ? "append" : "replaceChildren"](mk("p", "hint", "%B at elution = %B ini + (tR − " + specs.hold + " min hold) × (%B fin − %B ini) / tG." + (typeof rec.maxPressure === "number" ? " Highest back pressure: " + Math.round(rec.maxPressure) + " psi." : "")), t);
   }
 
   // ---------- rendering: decision ----------
