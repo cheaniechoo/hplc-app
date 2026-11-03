@@ -1300,6 +1300,16 @@ function resolveMinPercentB(specs, history) {
     };
   }
 
+  const est = estimateMinPercentB(history, specs.tRSpec, specs.currentSolvent);
+  if (est) {
+    return {
+      minPercentB: est.minPercentB,
+      source: "estimated",
+      note: "Minimum %B estimated from one run (the log K fit needs " + LOGK_MIN_POINTS + " retention runs): a 10-point %B decrease doubles the last peak's tR, so from " + est.fromPercentB + "% B with the last peak at " + est.fromTr.toFixed(2) + " min, Min %B = " + est.fromPercentB + " \u2212 10 \u00d7 log\u2082(" + specs.tRSpec + " / " + est.fromTr.toFixed(2) + ") = " + est.minPercentB.toFixed(1) + "%. It is replaced by the fitted value once there are enough runs.",
+      estimated: est,
+    };
+  }
+
   return {
     minPercentB: 5,
     source: "default",
@@ -2950,7 +2960,16 @@ function renderRunSummary() {
     const spec0 = readSpecsForDisplay();
     let value = null, sub = "";
     if (spec0.minPercentBOverride !== null && Number.isFinite(spec0.minPercentBOverride)) { value = spec0.minPercentBOverride; sub = "your override from the Specification"; }
-    else { const d = computeMinPercentB(readHistory(), spec0.tRSpec); if (d.sufficientData) { value = d.roundedMinPercentB; sub = d.frozen ? "calculated and locked: retention is finished" : "calculated from the log K fit"; } }
+    else {
+      const hAll = readHistory();
+      const d = computeMinPercentB(hAll, spec0.tRSpec);
+      if (d.sufficientData) { value = d.roundedMinPercentB; sub = d.frozen ? "calculated and locked: retention is finished" : "calculated from the log K fit"; }
+      else {
+        const at = hAll.findIndex(function (e) { return e.fileName === currentRunFileName; });
+        const est = estimateMinPercentB(at === -1 ? hAll : hAll.slice(0, at + 1), spec0.tRSpec, currentConditions ? currentConditions.solvent : null);
+        if (est) { value = est.minPercentB; sub = "estimated from one run (10 points of %B doubles tR); the log K fit takes over at " + LOGK_MIN_POINTS + " runs"; }
+      }
+    }
     const mb = document.createElement("div");
     mb.className = "rs-minb";
     const l1 = document.createElement("span"); l1.className = "rs-label"; l1.textContent = "Minimum %B";

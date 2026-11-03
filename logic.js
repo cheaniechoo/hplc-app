@@ -495,6 +495,31 @@ function computeMinPercentB(history, tRSpec) {
     }, frozenInfo);
 }
 
+// Before the log K fit has enough runs: estimate Min %B from a single retention run with the
+// course rule that a 10-point %B decrease doubles the last peak's tR:
+//   tR(B) = tR1 x 2^((B1 - B)/10)   so   Min %B = B1 - 10 x log2(tR spec / tR1)
+// The run whose tR is closest to the spec is used (the shortest extrapolation).
+function estimateMinPercentB(history, tRSpec, solvent) {
+    if (!tRSpec || tRSpec <= 0) return null;
+    const closedAt = retentionClosedIndex(history || []);
+    const scope = closedAt === -1 ? (history || []) : history.slice(0, closedAt + 1);
+    const wanted = solvent ? normaliseSolvent(solvent) : null;
+    let best = null;
+    for (const e of scope) {
+        if (!e || typeof e.percentB !== "number" || typeof e.trLastPeak !== "number" || e.trLastPeak <= 0) continue;
+        if (wanted && e.solvent && normaliseSolvent(e.solvent) !== wanted) continue;
+        const t = normaliseTemperature(e.temperature);
+        if (t && t !== "amb" && Number(t) > 30) continue;
+        const distance = Math.abs(Math.log(tRSpec / e.trLastPeak));
+        if (!best || distance < best.distance) best = { entry: e, distance: distance };
+    }
+    if (!best) return null;
+    const e = best.entry;
+    const value = e.percentB - 10 * Math.log2(tRSpec / e.trLastPeak);
+    const clamped = Math.min(Math.max(value, 0), 100);
+    return { minPercentB: roundPercentB(clamped), fromFile: e.fileName, fromPercentB: e.percentB, fromTr: e.trLastPeak };
+}
+
 // ============================================================================
 // All-peaks log K vs %B: one line per peak, and the %B where the closest pair
 // of lines is furthest apart (the best intermediate %B).
