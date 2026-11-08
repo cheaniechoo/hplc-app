@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>HPLC method development assistant</title>
-  <link rel="stylesheet" href="style.css?v=20261109-0050">
+  <link rel="stylesheet" href="style.css?v=20261109-0110">
 </head>
 <body>
 
@@ -68,10 +68,15 @@
   </main>
 
   <main id="panel-guide" class="tab-panel" role="tabpanel" aria-labelledby="tab-guide" hidden>
-    <nav class="sub-bar" aria-label="Flow chart guide sections"><button type="button" class="fsub-button" data-fsub="flow">1  Flow chart</button><button type="button" class="fsub-button" data-fsub="stages">2  Stages explained</button><button type="button" class="fsub-button" data-fsub="cases">3  Case tables</button><button type="button" class="fsub-button" data-fsub="formulas">4  Formula sheet</button><button type="button" class="fsub-button" data-fsub="glossary">5  Glossary</button></nav>
+    <nav class="sub-bar" aria-label="Flow chart guide sections"><button type="button" class="fsub-button" data-fsub="flow">1  Flow chart</button><button type="button" class="fsub-button" data-fsub="mindmap">2  Mind map</button><button type="button" class="fsub-button" data-fsub="stages">3  Stages explained</button><button type="button" class="fsub-button" data-fsub="cases">4  Case tables</button><button type="button" class="fsub-button" data-fsub="formulas">5  Formula sheet</button><button type="button" class="fsub-button" data-fsub="glossary">6  Glossary</button></nav>
     <section data-fsub-panel="flow" aria-labelledby="fc-flow-heading">
       <h2 id="fc-flow-heading">The method development flow chart</h2>
       <div id="fc-flow"></div>
+    </section>
+    <section data-fsub-panel="mindmap" aria-labelledby="fc-mm-heading" hidden>
+      <h2 id="fc-mm-heading">Mind map: the whole method development</h2>
+      <p class="hint">The full flow chart on one page, laid out like the course's RET–SEL–N–GRA chart: isocratic retention and selectivity down the left, efficiency once all 7 peaks are there in the middle, and gradient on the right.</p>
+      <div id="mindmap" class="mindmap"></div>
     </section>
     <section data-fsub-panel="stages" aria-labelledby="fc-stages-heading">
       <h2 id="fc-stages-heading">Every stage explained</h2>
@@ -695,23 +700,24 @@
     </section>
   </main>
 
-  <script src="equipment-data.js?v=20261109-0050"></script>
-  <script src="efficiency.js?v=20261109-0050"></script>
-  <script src="logic.js?v=20261109-0050"></script>
-  <script src="monash-columns.js?v=20261109-0050"></script>
-  <script src="user-columns.js?v=20261109-0050"></script>
-  <script src="module-howto.js?v=20261109-0050"></script>
-  <script src="chromatogram.js?v=20261109-0050"></script>
-  <script src="logk-chart.js?v=20261109-0050"></script>
-  <script src="gradient.js?v=20261109-0050"></script>
-  <script src="app.js?v=20261109-0050"></script>
-  <script src="gradient-app.js?v=20261109-0050"></script>
-  <script src="guide-figures.js?v=20261109-0050"></script>
-  <script src="flowchart.js?v=20261109-0050"></script>
-  <script src="ligand-structures.js?v=20261109-0050"></script>
-  <script src="equipment-interactive.js?v=20261109-0050"></script>
-  <script src="eff-settings.js?v=20261109-0050"></script>
-  <script src="awesome-calc.js?v=20261109-0050"></script>
-  <script src="nav.js?v=20261109-0050"></script>
+  <script src="equipment-data.js?v=20261109-0110"></script>
+  <script src="efficiency.js?v=20261109-0110"></script>
+  <script src="logic.js?v=20261109-0110"></script>
+  <script src="monash-columns.js?v=20261109-0110"></script>
+  <script src="user-columns.js?v=20261109-0110"></script>
+  <script src="module-howto.js?v=20261109-0110"></script>
+  <script src="chromatogram.js?v=20261109-0110"></script>
+  <script src="logk-chart.js?v=20261109-0110"></script>
+  <script src="gradient.js?v=20261109-0110"></script>
+  <script src="app.js?v=20261109-0110"></script>
+  <script src="gradient-app.js?v=20261109-0110"></script>
+  <script src="guide-figures.js?v=20261109-0110"></script>
+  <script src="flowchart.js?v=20261109-0110"></script>
+  <script src="ligand-structures.js?v=20261109-0110"></script>
+  <script src="equipment-interactive.js?v=20261109-0110"></script>
+  <script src="eff-settings.js?v=20261109-0110"></script>
+  <script src="awesome-calc.js?v=20261109-0110"></script>
+  <script src="mindmap.js?v=20261109-0110"></script>
+  <script src="nav.js?v=20261109-0110"></script>
 </body>
 </html>
