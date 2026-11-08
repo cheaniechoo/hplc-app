@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>HPLC method development assistant</title>
-  <link rel="stylesheet" href="style.css?v=20261108-2040">
+  <link rel="stylesheet" href="style.css?v=20261108-2130">
 </head>
 <body>
 
@@ -32,6 +32,7 @@
     <div class="nav-group" data-group="guide"><button id="tab-guide" class="tab-button" type="button" aria-controls="panel-guide" aria-selected="false">Flow chart guide</button></div>
     <div class="nav-group" data-group="flowchart"><button id="tab-flowchart" class="tab-button" type="button" aria-controls="panel-flowchart" aria-selected="false">Isocratic dashboard</button></div>
     <div class="nav-group" data-group="history"><button id="tab-history" class="tab-button" type="button" aria-controls="panel-history" aria-selected="false">Isocratic run history</button></div>
+    <div class="nav-group" data-group="calc"><button id="tab-calc" class="tab-button" type="button" aria-controls="panel-calc" aria-selected="false">Awesome Calculator</button></div>
     <div class="nav-group" data-group="gradient"><button id="tab-gradient" class="tab-button" type="button" aria-controls="panel-gradient" aria-selected="false">Gradient dashboard</button></div>
     <div class="nav-group" data-group="ghistory"><button id="tab-ghistory" class="tab-button" type="button" aria-controls="panel-ghistory" aria-selected="false">Gradient run history</button></div>
     <div class="nav-group" data-group="equipment"><button id="tab-equipment" class="tab-button" type="button" aria-controls="panel-equipment" aria-selected="false">Equipment</button></div>
@@ -360,6 +361,77 @@
   </main>
 
 
+  <main id="panel-calc" class="tab-panel" role="tabpanel" aria-labelledby="tab-calc" hidden>
+    <section aria-labelledby="ac-heading">
+      <h2 id="ac-heading">Awesome Calculator</h2>
+      <p class="hint">The course's Awesome Rainbow Calculator for isocratic efficiency: enter your best run, try a column or flow change, and see the predicted tR, back pressure and Rs. Same formulas as the spreadsheet. Your numbers are kept in this browser.</p>
+      <div class="ac-actions">
+        <button type="button" id="ac-fill">Fill from the current isocratic run</button>
+        <button type="button" id="ac-example" class="secondary">Load the spreadsheet's example</button>
+        <span id="ac-status" class="adv-status" role="status"></span>
+      </div>
+
+      <div class="spec-block spec-targets">
+        <div class="spec-block-head"><span class="spec-icon target" aria-hidden="true">&#9678;</span><h3>Method targets</h3><span class="spec-pill req">Desired max tR and BP</span></div>
+        <div class="specs-grid wide">
+          <div class="field"><label for="ac-trmax">Max tR last peak (min)</label><input id="ac-trmax" type="number" min="0" step="0.5" value="15"></div>
+          <div class="field"><label for="ac-bpmax">Max pressure (psi)</label><input id="ac-bpmax" type="number" min="0" step="100" value="4000"></div>
+          <div class="field"><label for="ac-rsspec">Resolution spec</label><input id="ac-rsspec" type="number" min="0" step="0.01" value="1.39"></div>
+        </div>
+      </div>
+
+      <div class="spec-block ac-current">
+        <div class="spec-block-head"><span class="spec-icon ac-cur-icon" aria-hidden="true">1</span><h3>Current method: your best run</h3><span class="spec-pill">From the file and its name</span></div>
+        <div class="specs-grid wide">
+          <div class="field"><label for="ac-spp1">SPP factor on N</label><select id="ac-spp1"><option value="1">1.0 fully porous</option><option value="1.5">1.5 core-shell (SPP)</option></select></div>
+          <div class="field"><label for="ac-l1">Column length (mm)</label><input id="ac-l1" type="number" min="0" step="1" value="150"></div>
+          <div class="field"><label for="ac-id1">Column I.D. (mm)</label><input id="ac-id1" type="number" min="0" step="0.1" value="4.6"></div>
+          <div class="field"><label for="ac-ps1">Particle size (µm)</label><input id="ac-ps1" type="number" min="0" step="0.1" value="5"></div>
+          <div class="field"><label for="ac-f1">Flow rate (mL/min)</label><input id="ac-f1" type="number" min="0" step="0.01" value="1.5"></div>
+          <div class="field"><label for="ac-t01">t0 (min)</label><input id="ac-t01" type="number" min="0" step="0.01" value="1.15"></div>
+          <div class="field"><label for="ac-tr1">tR last peak (min)</label><input id="ac-tr1" type="number" min="0" step="0.01" value="20.03"></div>
+          <div class="field"><label for="ac-n1">N last peak (peak table)</label><input id="ac-n1" type="number" min="0" step="1" value="4392"></div>
+          <div class="field"><label for="ac-bp1">Back pressure (psi)</label><input id="ac-bp1" type="number" min="0" step="10" value="2600"></div>
+          <div class="field"><label for="ac-rs1">Resolution Rs1 (worst pair)</label><input id="ac-rs1" type="number" min="0" step="0.01" value="2.17"></div>
+          <div class="field"><label for="ac-vinj1">Injection volume (µL)</label><input id="ac-vinj1" type="number" min="0" step="1" value="20"></div>
+          <div class="field"><label for="ac-hz1">Data collection rate (Hz)</label><input id="ac-hz1" type="number" min="0" step="0.01" value="1.56"></div>
+        </div>
+        <div id="ac-current-out" class="ac-stats"></div>
+      </div>
+
+      <div class="spec-block ac-floor">
+        <div class="spec-block-head"><span class="spec-icon ac-floor-icon" aria-hidden="true">2</span><h3>Rs floor: the lowest Rs1 that can still reach spec</h3></div>
+        <p class="hint">Rs floor = Rs spec × √(N1/Nmax), with N1 from the Van Deemter plate height at this run's linear velocity. Below the floor, no column or flow change can reach the spec: change selectivity.</p>
+        <div id="ac-floor-out"></div>
+      </div>
+
+      <div class="spec-block ac-try">
+        <div class="spec-block-head"><span class="spec-icon ac-try-icon" aria-hidden="true">3</span><h3>Try a change</h3></div>
+        <div id="ac-scen-tabs" class="ac-scen-tabs" role="group" aria-label="Which change to try"></div>
+        <div id="ac-scen-inputs"></div>
+        <p id="ac-scen-summary" class="ac-summary"></p>
+        <div id="ac-table-wrap" class="table-scroll"></div>
+      </div>
+
+      <div class="spec-block ac-rb">
+        <div class="spec-block-head"><span class="spec-icon ac-rb-icon" aria-hidden="true">4</span><h3>All changes at a glance</h3><span class="spec-pill">Decision column of each block</span></div>
+        <p class="hint">Each row is the slowest flow that keeps tR at spec (the most plates), if the back pressure allows it. Click a change to open its full column.</p>
+        <div id="ac-rainbow-wrap" class="table-scroll"></div>
+      </div>
+
+      <details class="spec-block spec-adv">
+        <summary><span class="spec-icon adv" aria-hidden="true">&#9881;</span><span class="spec-adv-title">Van Deemter constants</span><span class="spec-pill">Optional &middot; course values</span></summary>
+        <p class="hint">HETP = (A × PS + B/µ + C × PS² × µ) / SPP.</p>
+        <div class="specs-grid wide">
+          <div class="field"><label for="ac-vda">A (× PS)</label><input id="ac-vda" type="number" min="0" step="0.05" value="1.5"></div>
+          <div class="field"><label for="ac-vdb">B</label><input id="ac-vdb" type="number" min="0" step="0.1" value="3"></div>
+          <div class="field"><label for="ac-vdc">C (× PS²)</label><input id="ac-vdc" type="number" min="0" step="0.01" value="0.15"></div>
+          <div class="field"><label for="ac-sppbest">Best SPP factor available</label><input id="ac-sppbest" type="number" min="0" step="0.1" value="1.5"></div>
+        </div>
+      </details>
+    </section>
+  </main>
+
   <main id="panel-equipment" class="tab-panel" role="tabpanel" aria-labelledby="tab-equipment" hidden>
     <nav class="sub-bar" aria-label="Equipment steps"><button type="button" class="eq-sub-button" data-eq-sub="instrument">1  Instrument</button><button type="button" class="eq-sub-button" data-eq-sub="params">2  Parameters</button><button type="button" class="eq-sub-button" data-eq-sub="responses">3  Responses</button><button type="button" class="eq-sub-button" data-eq-sub="build">4  Build a column</button><button type="button" class="eq-sub-button" data-eq-sub="nomogram">5  Solvent nomogram</button></nav>
 
@@ -574,21 +646,22 @@
     </section>
   </main>
 
-  <script src="equipment-data.js?v=20261108-2040"></script>
-  <script src="efficiency.js?v=20261108-2040"></script>
-  <script src="logic.js?v=20261108-2040"></script>
-  <script src="monash-columns.js?v=20261108-2040"></script>
-  <script src="user-columns.js?v=20261108-2040"></script>
-  <script src="module-howto.js?v=20261108-2040"></script>
-  <script src="chromatogram.js?v=20261108-2040"></script>
-  <script src="logk-chart.js?v=20261108-2040"></script>
-  <script src="gradient.js?v=20261108-2040"></script>
-  <script src="app.js?v=20261108-2040"></script>
-  <script src="gradient-app.js?v=20261108-2040"></script>
-  <script src="guide-figures.js?v=20261108-2040"></script>
-  <script src="flowchart.js?v=20261108-2040"></script>
-  <script src="ligand-structures.js?v=20261108-2040"></script>
-  <script src="equipment-interactive.js?v=20261108-2040"></script>
-  <script src="nav.js?v=20261108-2040"></script>
+  <script src="equipment-data.js?v=20261108-2130"></script>
+  <script src="efficiency.js?v=20261108-2130"></script>
+  <script src="logic.js?v=20261108-2130"></script>
+  <script src="monash-columns.js?v=20261108-2130"></script>
+  <script src="user-columns.js?v=20261108-2130"></script>
+  <script src="module-howto.js?v=20261108-2130"></script>
+  <script src="chromatogram.js?v=20261108-2130"></script>
+  <script src="logk-chart.js?v=20261108-2130"></script>
+  <script src="gradient.js?v=20261108-2130"></script>
+  <script src="app.js?v=20261108-2130"></script>
+  <script src="gradient-app.js?v=20261108-2130"></script>
+  <script src="guide-figures.js?v=20261108-2130"></script>
+  <script src="flowchart.js?v=20261108-2130"></script>
+  <script src="ligand-structures.js?v=20261108-2130"></script>
+  <script src="equipment-interactive.js?v=20261108-2130"></script>
+  <script src="awesome-calc.js?v=20261108-2130"></script>
+  <script src="nav.js?v=20261108-2130"></script>
 </body>
 </html>

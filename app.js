@@ -21,6 +21,7 @@ const MAIN_TABS = {
   gradient: ["tab-gradient", "panel-gradient"],
   ghistory: ["tab-ghistory", "panel-ghistory"],
   history: ["tab-history", "panel-history"],
+  calc: ["tab-calc", "panel-calc"],
   equipment: ["tab-equipment", "panel-equipment"],
   naming: ["tab-naming", "panel-naming"],
 };
