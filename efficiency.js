@@ -32,7 +32,7 @@ function effNum(v) {
 // Raptor columns are the core-shell (superficially porous) line.
 function isCoreShell(lineOrCode) {
     const s = String(lineOrCode || "").trim();
-    return /^r$/i.test(s) || /raptor|^rap$/i.test(s);
+    return /^r$/i.test(s) || /raptor|^rap$|core-?shell|\bspp\b/i.test(s);
 }
 
 function lineFromCode(code) {
@@ -233,7 +233,7 @@ function candidateColumns(ref, userColumns) {
 }
 
 function describeColumn(col) {
-    return (col.ligand ? col.ligand + " " : "") + (col.line ? col.line + " " : "") + col.L + " × " + col.ID + " mm, " + col.dp + " µm" + (col.spp > 1 ? " core-shell" : "");
+    return (col.ligand ? col.ligand + " " : "") + (col.line ? col.line + " " : "") + col.L + " × " + col.ID + " mm, " + col.dp + " µm" + (col.spp > 1 && !/core-?shell/i.test(col.line || "") ? " core-shell" : "");
 }
 
 function rankRs(a, b) {
@@ -334,9 +334,55 @@ function recommendEfficiency(ref, specs, trClass, rClass, userColumns) {
         const i = out.others.findIndex(function (o) { return o.column === next.col; });
         if (i !== -1) out.others[i] = out.next;
     }
+    if (!out.reachesSpec) out.purchase = suggestPurchase(ref, specs, userColumns);
     // Case 1 (Rs below the floor): when no column and flow put all three in spec, the run goes to selectivity.
     if (key === "<<|<<" && !out.reachesSpec) out.selectivity = true;
     return out;
+}
+
+// Columns to buy: when nothing in the user's list reaches all three specs, search the usual
+// commercial geometries for this ligand (fully porous and core-shell) and return the ones that do,
+// smallest change first. Each is evaluated at its best flow, like the columns in the list.
+const BUY_LENGTHS = [50, 100, 150, 250];
+const BUY_IDS = [4.6, 3, 2.1];
+const BUY_FPP_PS = [5, 3, 1.9];
+const BUY_SPP_PS = [5, 2.7];
+function suggestPurchase(ref, specs, ownColumns) {
+    const own = new Set((ownColumns || []).map(function (c) { return [canonicalLigand(c.ligand), Number(c.L), Number(c.ID), Number(c.dp), isCoreShell(c.line) ? SPP_FACTOR : 1].join("|"); }));
+    own.add([ref.ligand, ref.L, ref.ID, ref.dp, ref.spp].join("|"));
+    const found = [];
+    [[1, BUY_FPP_PS], [SPP_FACTOR, BUY_SPP_PS]].forEach(function (bead) {
+        bead[1].forEach(function (dp) {
+            BUY_LENGTHS.forEach(function (L) {
+                BUY_IDS.forEach(function (ID) {
+                    const col = { ligand: ref.ligand, line: bead[0] > 1 ? "core-shell" : "fully porous", L: L, ID: ID, dp: dp, spp: bead[0], inLab: false, current: false, buy: true };
+                    if (own.has([col.ligand, L, ID, dp, col.spp].join("|"))) return;
+                    const limit = (typeof COLUMN_MAX_PSI !== "undefined" && COLUMN_MAX_PSI[String(dp)]) || Infinity;
+                    const s2 = Object.assign({}, specs, { maxPressure: Math.min(specs.maxPressure, limit) });
+                    let pred = bestFlowFor(ref, col, s2, "rs");
+                    if (!pred.feasibleFlow) return;
+                    if (!(pred.Rs >= specs.rsSpec - 1e-9 && pred.tR <= specs.tRSpec + 1e-9 && (pred.BP === null || pred.BP <= s2.maxPressure + 1e-9))) return;
+                    // Like the next run: the fastest flow that still meets every spec on that column.
+                    const fast = bestFlowFor(ref, col, s2, "speed");
+                    if (fast.feasibleFlow && fast.Rs >= specs.rsSpec - 1e-9 && fast.tR <= specs.tRSpec + 1e-9 && (fast.BP === null || fast.BP <= s2.maxPressure + 1e-9)) pred = fast;
+                    found.push({ col: col, levers: leversUsed(ref, col), feasibleFlow: true, pred: pred, meetsAll: true, refID: ref.ID });
+                });
+            });
+        });
+    });
+    found.sort(function (a, b) {
+        if (a.levers.length !== b.levers.length) return a.levers.length - b.levers.length;
+        const aId = a.col.ID === ref.ID, bId = b.col.ID === ref.ID;
+        if (aId !== bId) return aId ? -1 : 1;
+        if (Math.abs(a.pred.Rs - b.pred.Rs) > 0.005) return b.pred.Rs - a.pred.Rs;
+        return a.pred.tR - b.pred.tR;
+    });
+    return found.slice(0, 4).map(function (e) {
+        const d = decorate(ref, e, specs);
+        d.description = ref.ligand + " " + (e.col.spp > 1 ? "core-shell (SPP) " : "fully porous ") + e.col.L + " × " + e.col.ID + " mm, " + e.col.dp + " µm";
+        d.buy = true;
+        return d;
+    });
 }
 
 function decorate(ref, e, specs) {
@@ -380,7 +426,7 @@ function predictionText(p) {
 if (typeof window !== "undefined") {
     window.hplcEfficiency = {
         buildReference: buildEfficiencyReference, predictRun: predictRun, rsFloors: rsFloors,
-        recommend: recommendEfficiency, actionText: efficiencyActionText, predictionText: predictionText,
+        recommend: recommendEfficiency, suggestPurchase: suggestPurchase, actionText: efficiencyActionText, predictionText: predictionText,
         isCoreShell: isCoreShell, canonicalLigand: canonicalLigand, cases: EFFICIENCY_CASES,
         SPP_FACTOR: SPP_FACTOR,
     };

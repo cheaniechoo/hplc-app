@@ -1379,3 +1379,18 @@ td.ac-pill { display: table-cell; border-radius: 0; }
 .ac-rainbow th:first-child, .ac-rainbow td:first-child, .ac-rainbow th:nth-child(2), .ac-rainbow td:nth-child(2) { text-align: left; }
 .ac-rainbow thead th { background: #f3edf7; font-size: .8rem; color: #4d3463; }
 .ac-pill-cell { text-align: left !important; }
+
+/* ---- Column to buy ---- */
+.eff-hl-row.k-buy { border-left-color: #1f6fb5; border-style: dashed solid dashed solid; }
+.eff-hl-row.k-buy .eff-hl-tag { color: #1f6fb5; }
+.eff-why-table tr.k-buy .eff-why-lbl { color: #1f6fb5; }
+.eff-buy { margin: 1rem 0 .5rem; border: 1px dashed #7aa7d6; border-left: 5px solid #1f6fb5; border-radius: .65rem; padding: .75rem .9rem; background: #f3f8fd; }
+.eff-buy-head { display: flex; align-items: center; gap: .5rem; }
+.eff-buy-head h4 { margin: 0; color: #174f85; }
+.eff-buy-icon { font-size: 1.2rem; }
+.eff-buy-sub { margin: .3rem 0 .6rem; font-size: .88rem; color: #44525a; }
+.eff-buy-top { background: var(--surface); border: 1px solid #b9d2ec; border-radius: .55rem; padding: .6rem .8rem; }
+.eff-buy-top .eff-pred { grid-template-columns: repeat(4, minmax(6.5rem, 1fr)); }
+.eff-buy-add { margin-top: .3rem; font-size: .85rem; padding: .3rem .7rem; }
+.eff-buy-table { margin-top: .6rem; }
+.eff-buy-table td:last-child { text-align: right; }

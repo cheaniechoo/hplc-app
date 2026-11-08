@@ -149,5 +149,15 @@
     container.appendChild(resetBtn);
   }
 
-  window.userColumns = { read: read, render: render, reset: reset, onChange: function (fn) { listeners.push(fn); } };
+  // Adds a column to the list as "to order" (used by the efficiency card's "Add to my list").
+  function add(c) {
+    const st = readState();
+    const col = { ligand: c.ligand, line: c.line, L: Number(c.L), ID: Number(c.ID), dp: Number(c.dp), where: "order" };
+    if (st.added.some(function (a) { return keyOf(a) === keyOf(col); })) return false;
+    st.added.push(col); writeState(st);
+    const box = document.getElementById("columns-container"); if (box) render(box);
+    changed();
+    return true;
+  }
+  window.userColumns = { read: read, render: render, reset: reset, add: add, onChange: function (fn) { listeners.push(fn); } };
 })();

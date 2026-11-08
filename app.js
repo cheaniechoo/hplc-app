@@ -2172,10 +2172,12 @@ function effSuggestions(outcome) {
     items.push({ kind: "opt", label: "Most optimal", o: eff.best });
   }
   items.forEach(function (it) { it.inUse = effOptionKey(it.o) === effOptionKey(inUse); });
+  if (!eff.reachesSpec && eff.purchase && eff.purchase.length) items.push({ kind: "buy", label: "Column to buy", o: eff.purchase[0], inUse: false });
   return { eff: eff, table: eff.tableAction.replace(/\.$/, ""), items: items };
 }
 function effColumnWords(o) {
-  return (o.current ? "Current column" : o.description.replace(/ core-shell$/, "") + (o.column.spp > 1 ? " (core-shell)" : "")) + (o.inLab ? "" : " – to order");
+  if (o.buy) return o.description + " \u2013 not in your list";
+  return (o.current ? "Current column" : o.description.replace(/ core-shell$/, "") + (o.column.spp > 1 && !/core-?shell/i.test(o.description.replace(/ core-shell$/, "")) ? " (core-shell)" : "")) + (o.inLab ? "" : " – to order");
 }
 // Compact block used as the headline of the result card and in the Current run panel.
 function buildEffHeadline(sg, compact) {
@@ -2624,6 +2626,67 @@ function buildNextRunConditionsCard(outcome) {
 // Efficiency card: the case, the Rs floor, the recommended column and flow with
 // predicted tR, BP and Rs, and a ranked list of the other options.
 // ---------------------------------------------------------------------------
+// "Column to buy": geometries not in the user's list that would meet all three specs.
+function buildPurchaseBlock(eff, specs, ref) {
+  const mk = function (tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+  const box = mk("div", "eff-buy");
+  const list = eff.purchase || [];
+  const head = mk("div", "eff-buy-head");
+  head.appendChild(mk("span", "eff-buy-icon", "\u{1F6D2}"));
+  head.appendChild(mk("h4", null, list.length ? "Column to buy" : "No column to buy either"));
+  box.appendChild(head);
+  if (!list.length) {
+    box.appendChild(mk("p", "note", "No common geometry of this ligand (lengths 50\u2013250 mm, I.D. 2.1\u20134.6 mm, fully porous 1.9\u20135 \u00b5m or core-shell 2.7\u20135 \u00b5m) reaches Rs " + specs.rsSpec + " within tR " + specs.tRSpec + " min and " + specs.maxPressure + " psi. Change selectivity instead."));
+    return box;
+  }
+  box.appendChild(mk("p", "eff-buy-sub", "None of your columns reaches the specs, but these would (each at the fastest flow that still meets them). Check a supplier makes it in " + ref.ligand + " before ordering."));
+  const add = function (o) {
+    const b = mk("button", "secondary eff-buy-add", "Add to my column list (to order)");
+    b.type = "button";
+    b.addEventListener("click", function () {
+      if (!window.userColumns || !window.userColumns.add) return;
+      const ok = window.userColumns.add({ ligand: o.column.ligand, line: o.column.spp > 1 ? "Core-shell" : "Fully porous", L: o.column.L, ID: o.column.ID, dp: o.column.dp });
+      b.textContent = ok ? "Added \u2013 now in your list" : "Already in your list";
+      b.disabled = true;
+    });
+    return b;
+  };
+  const top = list[0];
+  const tile = mk("div", "eff-buy-top");
+  tile.appendChild(mk("p", "eff-rec-col", top.description));
+  const grid = mk("div", "eff-pred");
+  [["Flow", top.F.toFixed(2) + " mL/min", null], ["tR last peak", top.tR.toFixed(1) + " min", top.tROk], ["Back pressure", top.BP === null ? "?" : Math.round(top.BP) + " psi", top.bpOk], ["Rs", top.Rs.toFixed(2), top.rsOk]].forEach(function (x) {
+    const d = mk("div", "eff-pred-cell" + (x[2] === true ? " ok" : x[2] === false ? " bad" : ""));
+    d.appendChild(mk("span", "eff-floor-label", x[0])); d.appendChild(mk("strong", null, x[1])); grid.appendChild(d);
+  });
+  tile.appendChild(grid);
+  if (top.changes.length) {
+    const chips = mk("p", "eff-changes");
+    chips.appendChild(mk("span", "eff-floor-label", "Changes: "));
+    top.changes.forEach(function (c) { chips.appendChild(mk("span", "nr-chip", c)); });
+    tile.appendChild(chips);
+  }
+  tile.appendChild(add(top));
+  box.appendChild(tile);
+  if (list.length > 1) {
+    const t = mk("table", "eff-why-table eff-buy-table");
+    const h = t.createTHead().insertRow();
+    ["Other columns that would work", "F", "tR", "BP", "Rs", ""].forEach(function (x) { h.appendChild(mk("th", null, x)); });
+    const body = t.createTBody();
+    list.slice(1).forEach(function (o) {
+      const r = body.insertRow();
+      r.insertCell().textContent = o.description;
+      r.insertCell().textContent = o.F.toFixed(2);
+      r.insertCell().textContent = o.tR.toFixed(1);
+      r.insertCell().textContent = o.BP === null ? "?" : String(Math.round(o.BP));
+      const rs = r.insertCell(); rs.textContent = o.Rs.toFixed(2); rs.className = "eff-goodval";
+      r.insertCell().appendChild(add(o));
+    });
+    const sc = mk("div", "table-scroll"); sc.appendChild(t); box.appendChild(sc);
+  }
+  return box;
+}
+
 function buildEfficiencyCard(outcome) {
   const eff = outcome && outcome.efficiency;
   const ref = outcome && outcome.efficiencyRef;
@@ -2720,6 +2783,7 @@ function buildEfficiencyCard(outcome) {
     });
     card.appendChild(pair);
     if (!eff.reachesSpec && !eff.met) card.appendChild(mk("p", "eff-none", "No column in your list reaches the Rs spec within the tR and BP limits. The most optimal option is the closest."));
+    if (!eff.reachesSpec && !eff.met) card.appendChild(buildPurchaseBlock(eff, specs, ref));
     if (shown.column.ID !== ref.ID) card.appendChild(mk("p", "note", "A different internal diameter gives the same plates at the same linear velocity; it is chosen for the particle size it comes with, and it uses less solvent."));
   }
 
