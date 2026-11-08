@@ -19,6 +19,7 @@ const GRADIENT_DEFAULTS = {
     g1UpFactor: 0.5, g1DownFactor: 1.2, g2Factor: 0.8,
     shrinkStartMargin: 20, shrinkEndMargin: 5, wastedThreshold: 3,
     firstPeakIsMarker: true,
+    tempSteps: [40, 60], maxOvenTemp: 60, dwellVolume: 0,
     scouting: { bIni: 5, bFin: 100, tG: 20, F: 1.5 },
 };
 
@@ -222,15 +223,21 @@ function gradientConditionsFromFile(lines, fileNameParsed) {
 }
 
 // %B in the column when a peak elutes.
+// Delay before the gradient reaches the column: the isocratic hold plus the dwell time
+// (dwell volume / flow). Dwell volume defaults to 0 so the answer key is unchanged.
+function gradientDelay(run, specs) {
+    const dwell = Number(specs.dwellVolume) > 0 && Number(run.F) > 0 ? Number(specs.dwellVolume) / Number(run.F) : 0;
+    return specs.hold + dwell;
+}
 function percentBAt(t, run, specs) {
     const slope = (run.bFin - run.bIni) / run.tG;
-    const b = run.bIni + (t - specs.hold) * slope;
+    const b = run.bIni + (t - gradientDelay(run, specs)) * slope;
     return Math.min(Math.max(b, run.bIni), run.bFin);
 }
 // Time at which the gradient reaches a given %B.
 function timeAtPercentB(b, run, specs) {
     const slope = (run.bFin - run.bIni) / run.tG;
-    return specs.hold + (b - run.bIni) / slope;
+    return gradientDelay(run, specs) + (b - run.bIni) / slope;
 }
 
 function normTemp(t) {
@@ -261,7 +268,10 @@ function sortGradientRuns(runs) {
 }
 
 // The next selectivity change after G1 fails: temperature ladder, then solvent, then ligand.
-function nextGradientSelectivity(run, history) {
+function nextGradientSelectivity(run, history, specs) {
+    const steps = specs && Array.isArray(specs.tempSteps) && specs.tempSteps.length ? specs.tempSteps : [40, 60];
+    const maxOven = specs && Number(specs.maxOvenTemp) > 0 ? Number(specs.maxOvenTemp) : Infinity;
+    const GRADIENT_TEMPERATURES = ["amb"].concat(steps.filter(function (t) { return t <= maxOven; }).map(String));
     const tried = new Set(history.map(function (h) { return normSolvent(h.solvent) + "|" + normTemp(h.temperature) + "|" + String(h.ligand || "").toLowerCase(); }));
     const lig = String(run.ligand || "").toLowerCase();
     const solv = normSolvent(run.solvent);
@@ -325,7 +335,7 @@ function decideGradient(run, history, specsIn) {
         return Object.assign(out, { caseId: "error", stage: "No peaks", action: "Check the injection and detector, then repeat this run.", message: "No peak table was found in this file." });
     }
     if (peaks > specs.targetPeaks) {
-        return Object.assign(out, { caseId: "more", stage: "Check integration", action: "Check the peak integration and, if the extra peaks are real, purge the system.", message: "Found " + peaks + " peaks, more than the target of " + specs.targetPeaks + ". Remove integration artefacts (noise blips) and re-export, or purge for carry-over, before deciding." });
+        return Object.assign(out, { caseId: "more", caseLabel: "INVESTIGATE", investigate: true, stage: "INVESTIGATE", action: "INVESTIGATE: " + peaks + " peaks after removing the small ones, more than the target of " + specs.targetPeaks + ". Check the integration and, if the extra peaks are real, purge the system.", message: "Found " + peaks + " peaks, more than the target of " + specs.targetPeaks + ", even after peaks under the height threshold were removed. Check the integration (raise the height threshold if the extra peaks are noise) or purge for carry-over, before deciding." });
     }
 
     if (peaks < specs.targetPeaks) {
@@ -349,7 +359,7 @@ function decideGradient(run, history, specsIn) {
                 next: n,
             });
         }
-        const sel = nextGradientSelectivity(run, upTo);
+        const sel = nextGradientSelectivity(run, upTo, specs);
         const sc = specs.scouting;
         const n = sel.kind === "ligand" ? null : next(sc.bIni, sc.bFin, sc.tG, sc.F, { temperature: sel.temperature, solvent: sel.solvent });
         return Object.assign(out, {
@@ -366,7 +376,7 @@ function decideGradient(run, history, specsIn) {
         // G2: keep GS, stretch.
         const atMax = run.tG >= specs.tGMax - 1e-6;
         if (atMax) {
-            const sel = nextGradientSelectivity(run, upTo);
+            const sel = nextGradientSelectivity(run, upTo, specs);
             const sc = specs.scouting;
             const n = sel.kind === "ligand" ? null : next(sc.bIni, sc.bFin, sc.tG, sc.F, { temperature: sel.temperature, solvent: sel.solvent });
             return Object.assign(out, {

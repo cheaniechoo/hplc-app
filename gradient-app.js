@@ -20,21 +20,29 @@
 
   // ---------- specification ----------
   const SPEC_FIELDS = [
-    ["targetPeaks", "g-spec-peaks"], ["rsSpec", "g-spec-rs"], ["runTimeSpec", "g-spec-runtime"], ["maxPressure", "g-spec-pressure"], ["minAreaPercent", "g-spec-min-area"],
+    ["targetPeaks", "g-spec-peaks"], ["rsSpec", "g-spec-rs"], ["runTimeSpec", "g-spec-runtime"], ["maxPressure", "g-spec-pressure"], ["minHeight", "g-spec-min-height"],
     ["hold", "g-adv-hold"], ["tGMax", "g-adv-tgmax"], ["g1UpFactor", "g-adv-g1up"], ["g1DownFactor", "g-adv-g1down"], ["g2Factor", "g-adv-g2"],
     ["shrinkStartMargin", "g-adv-shrink-start"], ["shrinkEndMargin", "g-adv-shrink-end"],
+    ["maxOvenTemp", "g-adv-tmax"], ["dwellVolume", "g-adv-dwell"],
   ];
+  const SCOUT_FIELDS = [["bIni", "g-adv-sc-bini"], ["bFin", "g-adv-sc-bfin"], ["tG", "g-adv-sc-tg"], ["F", "g-adv-sc-f"]];
+  const TEXT_FIELDS = ["g-adv-tsteps"];
   function readSpecs() {
     const s = {};
     SPEC_FIELDS.forEach(function (f) { const el = $(f[1]); const v = el ? Number(el.value) : NaN; if (Number.isFinite(v)) s[f[0]] = v; });
     const marker = $("g-adv-marker");
     s.firstPeakIsMarker = marker ? marker.checked : true;
     s.scouting = Object.assign({}, G.defaults.scouting);
+    SCOUT_FIELDS.forEach(function (f) { const el = $(f[1]); const v = el ? Number(el.value) : NaN; if (Number.isFinite(v) && el.value !== "") s.scouting[f[0]] = v; });
+    const ts = $("g-adv-tsteps");
+    const steps = ts ? ts.value.split(/[,;\s]+/).map(Number).filter(function (v) { return Number.isFinite(v) && v > 25; }) : [];
+    s.tempSteps = steps.length ? steps.sort(function (a, b) { return a - b; }) : [40, 60];
     return s;
   }
   function saveSpecs() {
     const s = {};
-    SPEC_FIELDS.forEach(function (f) { const el = $(f[1]); if (el) s[f[1]] = el.value; });
+    SPEC_FIELDS.concat(SCOUT_FIELDS).forEach(function (f) { const el = $(f[1]); if (el) s[f[1]] = el.value; });
+    TEXT_FIELDS.forEach(function (id) { const el = $(id); if (el) s[id] = el.value; });
     const marker = $("g-adv-marker"); if (marker) s["g-adv-marker"] = marker.checked;
     try { localStorage.setItem(SPEC_KEY, JSON.stringify(s)); } catch (err) { /* ignore */ }
   }
@@ -42,11 +50,13 @@
     let s = null;
     try { s = JSON.parse(localStorage.getItem(SPEC_KEY) || "null"); } catch (err) { s = null; }
     if (!s) return;
-    SPEC_FIELDS.forEach(function (f) { const el = $(f[1]); if (el && s[f[1]] !== undefined) el.value = s[f[1]]; });
+    SPEC_FIELDS.concat(SCOUT_FIELDS).forEach(function (f) { const el = $(f[1]); if (el && s[f[1]] !== undefined) el.value = s[f[1]]; });
+    TEXT_FIELDS.forEach(function (id) { const el = $(id); if (el && s[id] !== undefined) el.value = s[id]; });
     const marker = $("g-adv-marker"); if (marker && typeof s["g-adv-marker"] === "boolean") marker.checked = s["g-adv-marker"];
   }
   function resetSpecs() {
-    SPEC_FIELDS.forEach(function (f) { const el = $(f[1]); if (el) el.value = el.defaultValue; });
+    SPEC_FIELDS.concat(SCOUT_FIELDS).forEach(function (f) { const el = $(f[1]); if (el) el.value = el.defaultValue; });
+    TEXT_FIELDS.forEach(function (id) { const el = $(id); if (el) el.value = el.defaultValue; });
     const marker = $("g-adv-marker"); if (marker) marker.checked = true;
     try { localStorage.removeItem(SPEC_KEY); } catch (err) { /* ignore */ }
   }
@@ -85,7 +95,7 @@
   function decideAll() {
     const h = readHistory();
     const specs = readSpecs();
-    h.forEach(function (r) { applyFilter(r, specs.minAreaPercent || 0); });
+    h.forEach(function (r) { applyFilter(r, specs.minHeight || 0); });
     h.forEach(function (r) { try { r.decision = G.decide(r, h, specs); delete r.decision.run; } catch (err) { r.decision = { caseId: "error", stage: "Could not decide", action: "", message: err.message }; } });
     writeHistory(h);
     return h;
@@ -246,7 +256,7 @@
       tr.insertCell().textContent = fmt(p.resolution, 2);
     });
     const parts = [];
-    if (rec.removedPeaks && rec.removedPeaks.length) parts.push(mk("p", "removed-peaks-note", "Removed as noise (not counted): " + rec.removedPeaks.map(function (p) { return "peak " + (p.peakNum === null ? "?" : p.peakNum) + " at " + fmt(p.rTime, 2) + " min (" + fmt(p.areaPercent, 2) + "% of total area)"; }).join("; ") + "."));
+    if (rec.removedPeaks && rec.removedPeaks.length) parts.push(mk("p", "removed-peaks-note", "Removed as noise (not counted): " + rec.removedPeaks.map(function (p) { return "peak " + (p.peakNum === null ? "?" : p.peakNum) + " at " + fmt(p.rTime, 2) + " min (height " + (typeof p.height === "number" ? Math.round(p.height).toLocaleString("en-AU") : "?") + ")"; }).join("; ") + "."));
     parts.push(mk("p", "hint", "%B at elution = %B ini + (tR \u2212 " + specs.hold + " min hold) \u00d7 (%B fin \u2212 %B ini) / tG."));
     parts.push(t);
     box.replaceChildren.apply(box, parts);
@@ -430,7 +440,7 @@
   const shownChrom = new Set();
   function gStageClass(d) {
     if (!d || !d.caseId) return "st-none";
-    if (d.unsafe) return "st-unsafe";
+    if (d.unsafe || d.caseId === "more") return "st-unsafe";
     if (d.caseId === "G1up" || d.caseId === "G1down") return "st-ret";
     if (d.caseId === "G1x" || d.caseId === "G2stop") return "st-sel";
     if (d.caseId === "G2" || d.caseId === "G3" || d.caseId === "G3fast") return "st-handoff";
@@ -582,16 +592,34 @@
     renderResult(rec);
     renderSummary(rec);
     renderHistory();
-    const again = $("g-decide-btn");
+    const gPaste = $("g-paste-btn");
+  if (gPaste) gPaste.addEventListener("click", function () {
+    const text = $("g-paste-text").value;
+    if (!text.trim()) { status("Paste the CSV data first.", true); return; }
+    if (!/\[Peak Table/i.test(text)) { status("The pasted data has no [Peak Table] section. Paste the whole export.", true); return; }
+    handleFiles([fileFromPaste(text, $("g-paste-name").value)]).then(function () { $("g-paste-text").value = ""; });
+  });
+  const again = $("g-decide-btn");
     if (again) again.disabled = !h.length;
   }
 
   // ---------- wiring ----------
   const input = $("g-file");
   if (input) input.addEventListener("change", function (e) { handleFiles(e.target.files).then(function () { e.target.value = ""; }); });
-  SPEC_FIELDS.map(function (f) { return $(f[1]); }).concat([$("g-adv-marker")]).forEach(function (el) {
-    if (el) el.addEventListener("change", function () { saveSpecs(); decideAll(); renderAll(); });
+  SPEC_FIELDS.concat(SCOUT_FIELDS).map(function (f) { return $(f[1]); }).concat([$("g-adv-marker")], TEXT_FIELDS.map($)).forEach(function (el) {
+    if (el) el.addEventListener("change", function () { saveSpecs(); decideAll(); renderAll(); const st = $("g-adv-status"); if (st) st.textContent = "Saved. Gradient runs decided again."; });
   });
+  const advReset = $("g-adv-reset");
+  if (advReset) advReset.addEventListener("click", function () {
+    // Only the advanced factors: the four specification values on the dashboard stay.
+    const keep = ["g-spec-peaks", "g-spec-rs", "g-spec-runtime", "g-spec-pressure", "g-spec-min-height"].map(function (id) { const el = $(id); return el ? [el, el.value] : null; }).filter(Boolean);
+    resetSpecs();
+    keep.forEach(function (k) { k[0].value = k[1]; });
+    saveSpecs(); decideAll(); renderAll();
+    const st = $("g-adv-status"); if (st) st.textContent = "Back to the case-table values.";
+  });
+  const openAdv = $("g-open-advanced");
+  if (openAdv) openAdv.addEventListener("click", function (e) { e.preventDefault(); const t = $("tab-gadvanced"); if (t) t.click(); });
   const again = $("g-decide-btn");
   if (again) again.addEventListener("click", function () { decideAll(); renderAll(); showGSub("result"); });
   const clr = $("g-clear-history");

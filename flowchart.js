@@ -28,7 +28,7 @@
       rules: [
         { if: "BP ≥ your limit", then: "Stop: no decision for this run", tone: "stop" },
         { if: "No pressure trace in the file", then: "“Couldn't check”, the run continues", tone: "wait" },
-        { if: "Tiny peaks under 1% of the area", then: "Removed as noise and listed", tone: "info" },
+        { if: "Peaks lower than 10,000 (editable)", then: "Removed as noise and listed", tone: "info" },
         { if: "Sample Name ≠ file name", then: "Warning: check the file", tone: "wait" },
       ],
       eq: ["BP (psi) = raw pressure × Intensity Multiplier"],
@@ -52,7 +52,7 @@
       key: "Efficiency can't make hidden peaks appear, so it waits until every peak is visible.",
       rules: [
         { if: "Fewer peaks than the target", then: "Rs = 0: retention or selectivity", tone: "stop" },
-        { if: "More peaks than the target", then: "Check the integration or purge", tone: "wait" },
+        { if: "Still more peaks than the target", then: "INVESTIGATE: integration or carry-over", tone: "wait" },
         { if: "Exactly the target", then: "Efficiency", tone: "go" },
       ],
       eq: [],
@@ -254,7 +254,7 @@
     const st = String(o.stage || "");
     let node = "equip";
     if (o.unsafe || st === "Safety check") node = "equip";
-    else if (/^Check the peak integration/.test(String(o.action || ""))) node = "peaks";
+    else if (/^INVESTIGATE/.test(String(o.action || ""))) node = "peaks";
     else if (st === "Retention") node = "ret";
     else if (/^Retention -> Selectivity|^Selectivity/.test(st)) node = "sel";
     else if (st === "Efficiency") node = "eff";

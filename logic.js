@@ -44,6 +44,23 @@ function workbookToText(XLSX, workbook) {
         }).join(",");
     }).join("\n");
 }
+// Pasted data: rows copied from Excel arrive tab-separated; make them comma-separated like a .csv.
+function normalisePastedText(text) {
+    return String(text || "").split(/\r?\n/).map(function (line) {
+        if (line.indexOf("\t") === -1) return line;
+        return line.split("\t").map(function (c) { return c.replace(/,/g, " ").trim(); }).join(",");
+    }).join("\n");
+}
+// Make a File from pasted data, named from `name`, or else the Sample Name inside it.
+function fileFromPaste(text, name) {
+    const body = normalisePastedText(text);
+    let base = String(name || "").trim().replace(/\.(csv|xlsx?|txt)$/i, "");
+    if (!base) {
+        const sn = findSampleName(splitIntoLines(body));
+        base = sn ? String(sn).replace(/^.*[\\/]/, "").replace(/\.(lcd|csv)$/i, "") : "Pasted run " + new Date().toLocaleTimeString("en-AU");
+    }
+    return new File([body], base + ".csv", { type: "text/csv" });
+}
 function findSampleName(lines) {
     for (const fields of lines) {
         if (fields[0] === "Sample Name" && fields.length > 1) {
@@ -95,27 +112,20 @@ function findPeakTable(lines) {
     return { peaks: peaks, declaredCount: declaredCount };
 }
 // Integration noise: small blips LabSolutions counts as peaks when they were not
-// removed before export. A peak whose area is below `minAreaPercent` % of the total
-// area of all peaks is removed. For a kept peak whose neighbour was removed, Rs is
-// recalculated against the previous kept peak: Rs = 2 (tR2 - tR1) / (Wb1 + Wb2),
+// removed before export. Following the lecturer's forum answer, a peak lower than
+// `minHeight` (editable; LabSolutions uses 10,000) is removed. If the peak table has
+// no Height column, nothing is removed. For a kept peak whose neighbour was removed,
+// Rs is recalculated against the previous kept peak: Rs = 2 (tR2 - tR1) / (Wb1 + Wb2),
 // with the base width from the plate number, Wb = 4 tR / sqrt(N).
-function filterSmallPeaks(rawPeaks, minAreaPercent) {
+function filterSmallPeaks(rawPeaks, minHeight) {
     const peaks = (rawPeaks || []).map(function (p) { return Object.assign({}, p); });
-    const pct = Number(minAreaPercent);
-    const none = { kept: peaks, removed: [], recalculated: [], threshold: pct, basis: null };
-    if (peaks.length === 0 || !(pct > 0)) return none;
-    const useArea = peaks.every(function (p) { return typeof p.area === "number"; });
-    const useHeight = !useArea && peaks.every(function (p) { return typeof p.height === "number"; });
-    if (!useArea && !useHeight) return none;
-    const size = function (p) { return useArea ? p.area : p.height; };
-    const total = peaks.reduce(function (s, p) { return s + Math.max(size(p), 0); }, 0);
-    if (!(total > 0)) return none;
+    const limit = Number(minHeight);
+    const none = { kept: peaks, removed: [], recalculated: [], threshold: limit, basis: "height", noHeights: false };
+    if (peaks.length === 0 || !(limit > 0)) return none;
+    if (!peaks.every(function (p) { return typeof p.height === "number"; })) { none.noHeights = true; return none; }
     const kept = [];
     const removed = [];
-    peaks.forEach(function (p) {
-        p.areaPercent = Math.max(size(p), 0) / total * 100;
-        (p.areaPercent < pct ? removed : kept).push(p);
-    });
+    peaks.forEach(function (p) { (p.height < limit ? removed : kept).push(p); });
     if (kept.length === 0) return none;
     const recalculated = [];
     const baseWidth = function (p) { return typeof p.rTime === "number" && typeof p.plateCount === "number" && p.plateCount > 0 ? 4 * p.rTime / Math.sqrt(p.plateCount) : null; };
@@ -133,9 +143,8 @@ function filterSmallPeaks(rawPeaks, minAreaPercent) {
             recalculated.push({ rTime: cur.rTime, from: before, to: before, computed: false });
         }
     }
-    // If the first peak was noise, the new first peak has no neighbour before it.
     if (peaks.indexOf(kept[0]) !== 0) kept[0].resolution = null;
-    return { kept: kept, removed: removed, recalculated: recalculated, threshold: pct, basis: useArea ? "area" : "height" };
+    return { kept: kept, removed: removed, recalculated: recalculated, threshold: limit, basis: "height", noHeights: false };
 }
 
 // One sentence telling the user what was removed.
@@ -143,7 +152,7 @@ function smallPeaksNotice(filt) {
     if (!filt || !filt.removed.length) return null;
     const n = filt.removed.length;
     const times = filt.removed.map(function (p) { return typeof p.rTime === "number" ? p.rTime.toFixed(2) : "?"; }).join(", ");
-    let text = "Removed " + n + " small peak" + (n === 1 ? "" : "s") + " (each under " + filt.threshold + "% of the total peak " + filt.basis + ") at tR " + times + " min: these look like integration noise, not compounds, so they are not counted.";
+    let text = "Removed " + n + " small peak" + (n === 1 ? "" : "s") + " (height under " + Number(filt.threshold).toLocaleString("en-AU") + ") at tR " + times + " min: these look like integration noise, not compounds, so they are not counted.";
     const rc = filt.recalculated.filter(function (r) { return r.computed; });
     if (rc.length) text += " Rs was recalculated for the peak" + (rc.length === 1 ? "" : "s") + " next to " + (n === 1 ? "it" : "them") + " (Wb = 4 tR/√N).";
     if (filt.recalculated.some(function (r) { return !r.computed; })) text += " Some Rs values could not be recalculated (no plate number), so the exported value is kept.";
@@ -706,6 +715,22 @@ function convertFromAcn(acnPercentB, targetSolvent) {
     }
     return { percentB: null, capped: false, note: "The %B is outside the nomogram's range." };
 }
+// Mixed solvent (ACN + MeOH): isoeluotropic total %B by linear mixing of the two pure
+// solvents' isoeluotropic %B values. acnShare = % of the organic part that is ACN (50 = 50:50).
+// e.g. 40% ACN = 50% MeOH, so 50:50 mix = 0.5 x 40 + 0.5 x 50 = 45% B (22.5% ACN + 22.5% MeOH).
+function mixIsoeluotropic(acnPercentB, acnShare) {
+    const share = Math.min(Math.max(Number(acnShare), 0), 100) / 100;
+    const meoh = convertFromAcn(acnPercentB, "MeOH");
+    if (meoh.percentB === null) return null;
+    const total = share * Number(acnPercentB) + (1 - share) * meoh.percentB;
+    return { total: roundPercentB(total), acnPart: roundPercentB(total * share), meohPart: roundPercentB(total * (1 - share)), acnEquivalent: Number(acnPercentB), meohEquivalent: meoh.percentB, share: share * 100 };
+}
+// ACN:MeOH share of a mixed-solvent run: from the name (e.g. "MIX30" = 30% ACN, "MIX-30:70"), else the spec (default 50:50).
+function parseMixShare(token, fallback) {
+    const m = String(token || "").match(/MIX\D*(\d{1,3})/i);
+    const v = m ? Number(m[1]) : NaN;
+    return Number.isFinite(v) && v >= 0 && v <= 100 ? v : (Number.isFinite(Number(fallback)) ? Number(fallback) : 50);
+}
 function convertToAcn(percentB, sourceSolvent) {
     const solventKey = sourceSolvent === "MeOH" ? "meoh" : (sourceSolvent === "THF" ? "thf" : null);
     if (solventKey === null) {
@@ -1169,14 +1194,18 @@ function nextSelectivityStep(history, summary, specs, reason, options) {
         const currentPercentBFromEntry = lastEntry && typeof lastEntry.percentB === "number" ? lastEntry.percentB : null;
         const currentPercentBFromConditions = conditions && typeof conditions.percentB === "string" ? Number(conditions.percentB) : null;
         const percentBForConversion = currentPercentBFromEntry !== null ? currentPercentBFromEntry : (Number.isFinite(currentPercentBFromConditions) ? currentPercentBFromConditions : null);
+        // The current run is on MeOH: find its ACN equivalent, then the isoeluotropic mix.
+        const acnEq = percentBForConversion !== null ? convertToAcn(percentBForConversion, "MeOH") : null;
+        const mixB = acnEq && acnEq.percentB !== null ? mixIsoeluotropic(acnEq.percentB, specs && specs.mixAcnShare !== undefined ? specs.mixAcnShare : 50) : null;
         return {
             step: "solvent-mix",
             parameter: "mix",
             value: "MIX",
-            percentB: percentBForConversion,
+            percentB: mixB ? mixB.total : null,
+            mix: mixB,
             temperatures: ["amb", "40", "60"],
-            action: "Switch to the mixed solvent at the isoeluotropic %B, at " + SOLVENT_TEMPERATURES_LABEL + ".",
-            message: "Temperature and MeOH are exhausted. Next selectivity step: switch to the mixed solvent at the isoeluotropic %B, at " + SOLVENT_TEMPERATURES_LABEL + ".",
+            action: mixB ? "Switch to the mixed solvent (ACN:MeOH " + mixB.share + ":" + (100 - mixB.share) + ") at " + mixB.total + "% B (" + mixB.acnPart + "% ACN + " + mixB.meohPart + "% MeOH), at " + SOLVENT_TEMPERATURES_LABEL + "." : "Switch to the mixed solvent at the isoeluotropic %B, at " + SOLVENT_TEMPERATURES_LABEL + ".",
+            message: "Temperature and MeOH are exhausted. Next selectivity step: switch to the mixed solvent" + (mixB ? " (ACN:MeOH " + mixB.share + ":" + (100 - mixB.share) + ", set in the Specification) at " + mixB.total + "% B total, isoeluotropic with " + mixB.acnEquivalent + "% ACN and " + mixB.meohEquivalent + "% MeOH: " + (mixB.share / 100) + " \u00d7 " + mixB.acnEquivalent + " + " + ((100 - mixB.share) / 100) + " \u00d7 " + mixB.meohEquivalent + " = " + mixB.total + "% B" : " at the isoeluotropic %B (the %B could not be converted automatically: check the nomogram)") + ", at " + SOLVENT_TEMPERATURES_LABEL + ".",
             reasoning: "The mixed solvent is the third selectivity parameter on the flowchart. It is tried after the pure solvents because it can produce a different pattern of acid/base/dipolar interactions than either pure solvent alone.",
             remainingPath: [
                 "mix at " + SOLVENT_TEMPERATURES_LABEL,
@@ -1376,10 +1405,11 @@ function decide(summary, specs, history, options) {
     }
     if (summary.numPeaks > specs.targetPeaks) {
         return {
-            stage: "Selectivity",
+            stage: "INVESTIGATE",
+            investigate: true,
             pass: false,
-            action: "Check the peak integration and, if the extra peaks are real, purge the system.",
-            message: "Found " + summary.numPeaks + " peaks, more than the required " + specs.targetPeaks + ". Before going further, check two things. (1) Have you removed the integration artefacts? LabSolutions can pick up small, irrelevant blips as peaks if the integration settings are too sensitive. Open the chromatogram, adjust the peak-integrity or slope settings so those blips are not counted, and re-export the CSV. (2) If the extra peaks are real, they suggest carry-over from a previous run: the column, the injector, or the sample loop still has material from the last injection. Purge the pump, the injector and the column before running the next sample. Once the peak count matches the target, run again.",
+            action: "INVESTIGATE: " + summary.numPeaks + " peaks after removing the small ones, more than the target of " + specs.targetPeaks + ". Check the integration and, if the extra peaks are real, purge the system.",
+            message: "Found " + summary.numPeaks + " peaks, more than the required " + specs.targetPeaks + ", even after peaks under the height threshold were removed. Before going further, check two things. (1) Have you removed the integration artefacts? LabSolutions can pick up small, irrelevant blips as peaks if the integration settings are too sensitive. Open the chromatogram, adjust the peak-integrity or slope settings so those blips are not counted, and re-export the CSV. (2) If the extra peaks are real, they suggest carry-over from a previous run: the column, the injector, or the sample loop still has material from the last injection. Purge the pump, the injector and the column before running the next sample. Once the peak count matches the target, run again.",
         };
     }
     if (summary.trLastPeak === null || summary.minResolution === null) {
@@ -1437,7 +1467,8 @@ function decide(summary, specs, history, options) {
             result.prediction = predictionText(b);
             result.message = "Case " + eff.caseNumber + " of the efficiency table (" + eff.caseLabel + "). Flow chart: " + eff.tableAction + "." +
                 " Predicted for the next run: " + predictionText(b) + "." +
-                (eff.reachesSpec ? "" : " No column in your list reaches the Rs spec with the levers this case allows; this is the closest one.");
+                (eff.met ? "" : " Best option = the column and flow with the highest Rs that keep tR and back pressure in spec, from every column in your list (each at its Van Deemter optimum flow, raised for tR, capped for BP).") +
+                (eff.reachesSpec ? "" : " No column in your list reaches the Rs spec within the tR and BP limits; this is the closest one.");
             if (eff.met) { result.stage = "Complete"; result.pass = true; }
             else result.stage = "Efficiency";
         } else if (eff.met) {

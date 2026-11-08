@@ -1215,3 +1215,9 @@ button.danger-outline:hover:not(:disabled) { background: var(--error); color: #f
 /* Chromatograms inside run-history rows: a readable size that stays in view as the table scrolls */
 .hist-chrom-row .run-chrom-wrap { position: sticky; left: .75rem; max-width: min(60rem, calc(100vw - 22rem)); }
 @media (max-width: 900px) { .hist-chrom-row .run-chrom-wrap { max-width: calc(100vw - 3rem); } }
+.eff-case-badge { display: inline-block; margin-left: .35rem; padding: 0 .4rem; border-radius: 999px; font-size: .68rem; font-weight: 700; background: var(--cat-chemical-bg); color: var(--accent-dark); vertical-align: middle; }
+.paste-box { margin: .75rem 0; padding: .5rem .8rem; border: 1px dashed var(--line); border-radius: .5rem; background: var(--surface); }
+.paste-box summary { cursor: pointer; font-weight: 600; color: var(--accent-dark); }
+.paste-box label { display: block; margin: .6rem 0 .2rem; font-size: .88rem; }
+.paste-box input, .paste-box textarea { width: 100%; box-sizing: border-box; font-family: ui-monospace, Menlo, monospace; font-size: .8rem; }
+.paste-box button { margin-top: .5rem; margin-right: .5rem; }

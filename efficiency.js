@@ -261,34 +261,52 @@ function recommendEfficiency(ref, specs, trClass, rClass, userColumns) {
     if (kase.selectivity) { out.selectivity = true; return out; }
 
     const cols = candidateColumns(ref, userColumns);
-    const evaluated = [];
-    for (const col of cols) {
-        const goal = kase.goal;
-        const pred = bestFlowFor(ref, col, specs, goal);
-        if (!pred.feasibleFlow) {
-            evaluated.push({ col: col, levers: leversUsed(ref, col), feasibleFlow: false, pred: null, meetsAll: false, refID: ref.ID });
-            continue;
-        }
-        const meetsAll = pred.tR <= specs.tRSpec + 1e-9 && (pred.BP === null || pred.BP <= specs.maxPressure + 1e-9) && pred.Rs >= specs.rsSpec - 1e-9;
-        evaluated.push({ col: col, levers: leversUsed(ref, col), feasibleFlow: true, pred: pred, meetsAll: meetsAll, refID: ref.ID });
-    }
-    const allowed = function (e) {
-        if (kase.goal === "speed" || kase.goal === "trspec") return e.col.current;
-        return e.levers.every(function (l) { return kase.levers.indexOf(l) !== -1; });
-    };
-    const runnable = evaluated.filter(function (e) { return e.feasibleFlow; });
-    const sorter = kase.goal === "speed" ? rankSpeed : rankRs;
-    const inCase = runnable.filter(allowed).sort(sorter);
-    const others = runnable.filter(function (e) { return !allowed(e) && e.meetsAll; }).sort(sorter);
-
-    let best = inCase.find(function (e) { return e.meetsAll; }) || null;
-    out.reachesSpec = !!best;
-    if (!best && inCase.length) best = inCase.slice().sort(function (a, b) { return b.pred.Rs - a.pred.Rs; })[0];
-    out.best = best ? decorate(ref, best, specs) : null;
-    out.inCase = inCase.filter(function (e) { return e !== best; }).map(function (e) { return decorate(ref, e, specs); });
-    out.others = others.map(function (e) { return decorate(ref, e, specs); });
     out.columnsChecked = cols.length;
-    // Rows 1 and 2 below the floor: when no column and flow put all three in spec, the run goes to selectivity.
+    const matchesCase = function (col, levers) {
+        if (kase.met || kase.goal === "trspec") return !!col.current;
+        return levers.every(function (l) { return kase.levers.indexOf(l) !== -1; });
+    };
+    const evaluate = function (goal) {
+        return cols.map(function (col) {
+            const levers = leversUsed(ref, col);
+            const pred = bestFlowFor(ref, col, specs, goal);
+            if (!pred.feasibleFlow) return { col: col, levers: levers, feasibleFlow: false, pred: null, meetsAll: false, refID: ref.ID, matchesCase: matchesCase(col, levers) };
+            const meetsAll = pred.tR <= specs.tRSpec + 1e-9 && (pred.BP === null || pred.BP <= specs.maxPressure + 1e-9) && pred.Rs >= specs.rsSpec - 1e-9;
+            return { col: col, levers: levers, feasibleFlow: true, pred: pred, meetsAll: meetsAll, refID: ref.ID, matchesCase: matchesCase(col, levers) };
+        }).filter(function (e) { return e.feasibleFlow; });
+    };
+
+    if (kase.met) {
+        // Method met: the optional extra is the fastest flow on the current column that keeps Rs and BP in spec.
+        const runnable = evaluate("speed").sort(rankSpeed);
+        const best = runnable.find(function (e) { return e.col.current && e.meetsAll; }) || runnable.find(function (e) { return e.meetsAll; }) || null;
+        out.reachesSpec = !!best;
+        out.best = best ? decorate(ref, best, specs) : null;
+        out.inCase = [];
+        out.others = runnable.filter(function (e) { return e !== best && e.meetsAll; }).map(function (e) { return decorate(ref, e, specs); });
+        return out;
+    }
+
+    // Every column in the list (every combination of L, PS, bead and ID the user has), each at its best
+    // flow: the Van Deemter optimum, raised if needed to keep tR <= spec, capped to keep BP <= max.
+    // The best option is the one with the highest Rs while tR and BP stay in spec (lecturer's forum answer).
+    const runnable = evaluate("rs");
+    const byRs = function (a, b) {
+        if (a.meetsAll !== b.meetsAll) return a.meetsAll ? -1 : 1;
+        if (Math.abs(a.pred.Rs - b.pred.Rs) > 0.005) return b.pred.Rs - a.pred.Rs;
+        if (a.col.inLab !== b.col.inLab) return a.col.inLab ? -1 : 1;
+        if (a.levers.length !== b.levers.length) return a.levers.length - b.levers.length;
+        return a.pred.tR - b.pred.tR;
+    };
+    runnable.sort(byRs);
+    const inSpec = runnable.filter(function (e) { return e.pred.tR <= specs.tRSpec + 1e-9 && (e.pred.BP === null || e.pred.BP <= specs.maxPressure + 1e-9); });
+    let best = runnable.find(function (e) { return e.meetsAll; }) || null;
+    out.reachesSpec = !!best;
+    if (!best && inSpec.length) best = inSpec.slice().sort(function (a, b) { return b.pred.Rs - a.pred.Rs; })[0];
+    out.best = best ? decorate(ref, best, specs) : null;
+    out.inCase = [];
+    out.others = runnable.filter(function (e) { return e !== best; }).map(function (e) { return decorate(ref, e, specs); });
+    // Case 1 (Rs below the floor): when no column and flow put all three in spec, the run goes to selectivity.
     if (key === "<<|<<" && !out.reachesSpec) out.selectivity = true;
     return out;
 }
@@ -306,24 +324,23 @@ function decorate(ref, e, specs) {
         column: col, description: describeColumn(col), current: !!col.current, inLab: col.inLab,
         levers: e.levers, leverWords: e.levers.map(function (l) { return LEVER_WORDS[l]; }),
         F: p.F, tR: p.tR, BP: p.BP, Rs: p.Rs, N: p.N, t0: p.t0, solvent: p.solvent,
-        meetsAll: e.meetsAll, changes: changes,
+        meetsAll: e.meetsAll, changes: changes, matchesCase: !!e.matchesCase,
         tROk: p.tR <= specs.tRSpec + 1e-9, bpOk: p.BP === null ? null : p.BP <= specs.maxPressure + 1e-9, rsOk: p.Rs >= specs.rsSpec - 1e-9,
     };
 }
 
 // One line for the headline, e.g. "Switch to C18 Pinnacle DB 150 x 4.6 mm, 3 um at 1.27 mL/min".
 function efficiencyActionText(eff, ref) {
-    if (!eff || !eff.best) return null;
+    if (!eff) return null;
     const b = eff.best;
     if (eff.met) {
-        if (Math.abs(b.F - ref.F) < 0.005) return "Method met. Keep the current conditions.";
+        if (!b || (b.current && Math.abs(b.F - ref.F) < 0.005)) return "Method met. Keep the current conditions.";
         return "Method met. Optionally raise F to " + b.F.toFixed(2) + " mL/min to shorten the run.";
     }
-    if (b.current) {
-        const dir = b.F > ref.F ? "Increase" : "Decrease";
-        return dir + " F to " + b.F.toFixed(2) + " mL/min on the current column.";
-    }
-    return "Switch to " + b.description + " at " + b.F.toFixed(2) + " mL/min.";
+    const table = eff.tableAction.replace(/\.$/, "");
+    if (!b) return table + ".";
+    const what = b.current ? (b.F > ref.F ? "increase F to " : "decrease F to ") + b.F.toFixed(2) + " mL/min on the current column" : b.description + " at " + b.F.toFixed(2) + " mL/min";
+    return table + ". Best option: " + what + ".";
 }
 
 function predictionText(p) {

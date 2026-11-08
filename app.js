@@ -20,6 +20,7 @@ const MAIN_TABS = {
   flowchart: ["tab-flowchart", "panel-flowchart"],
   gradient: ["tab-gradient", "panel-gradient"],
   ghistory: ["tab-ghistory", "panel-ghistory"],
+  gadvanced: ["tab-gadvanced", "panel-gadvanced"],
   history: ["tab-history", "panel-history"],
   equipment: ["tab-equipment", "panel-equipment"],
   naming: ["tab-naming", "panel-naming"],
@@ -75,7 +76,7 @@ const specRs = document.getElementById("spec-rs");
 const specRsFloor = document.getElementById("spec-rs-floor");
 const specMinPercentB = document.getElementById("spec-min-percent-b");
 const specMaxPressure = document.getElementById("spec-max-pressure");
-const specMinArea = document.getElementById("spec-min-area");
+const specMinArea = document.getElementById("spec-min-height");
 function readMinArea() { const v = specMinArea ? Number(specMinArea.value) : 0; return Number.isFinite(v) && v > 0 ? v : 0; }
 let currentRemovedPeaks = [];
 
@@ -94,6 +95,17 @@ const HISTORY_STORAGE_KEY = "hplc-flowchart-run-history-v1";
 const HISTORY_MAX_ENTRIES = 30;
 
 fileInput.addEventListener("change", handleFilesChosen);
+(function () {
+  const btn = document.getElementById("paste-btn");
+  if (!btn) return;
+  btn.addEventListener("click", function () {
+    const text = document.getElementById("paste-text").value;
+    if (!text.trim()) { showUploadStatus("Paste the CSV data first.", true); return; }
+    if (!/\[Peak Table/i.test(text)) { showUploadStatus("The pasted data has no [Peak Table] section. Paste the whole export.", true); return; }
+    handleFilesChosen({ target: { files: [fileFromPaste(text, document.getElementById("paste-name").value)], value: "" } });
+    document.getElementById("paste-text").value = "";
+  });
+})();
 calculateBtn.addEventListener("click", function () { handleCalculate(lastSpecsUsed && currentSummary && buildSpecChanges(lastSpecsUsed, readSpecsForDisplay()).length ? "rejudged" : null); });
 clearHistoryBtn.addEventListener("click", function () {
   const n = readHistory().length;
@@ -665,7 +677,7 @@ function renderPeaks(peaks, removed) {
   const note = document.createElement("p");
   note.className = "removed-peaks-note";
   note.textContent = "Removed as noise (not counted): " + removed.map(function (p) {
-    return "peak " + (p.peakNum === null ? "?" : p.peakNum) + " at " + (typeof p.rTime === "number" ? p.rTime.toFixed(2) : "?") + " min (" + (typeof p.areaPercent === "number" ? p.areaPercent.toFixed(2) : "?") + "% of total area)";
+    return "peak " + (p.peakNum === null ? "?" : p.peakNum) + " at " + (typeof p.rTime === "number" ? p.rTime.toFixed(2) : "?") + " min (height " + (typeof p.height === "number" ? Math.round(p.height).toLocaleString("en-AU") : "?") + ")";
   }).join("; ") + ".";
   peaksContainer.replaceChildren(note, table);
 }
@@ -699,6 +711,14 @@ function reapplyPeakFilter() {
   if (currentSummary) { autoCalculating = true; try { handleCalculate(); } finally { autoCalculating = false; } }
 }
 if (specMinArea) specMinArea.addEventListener("change", reapplyPeakFilter);
+(function () {
+  const mix = document.getElementById("spec-mix-acn");
+  if (!mix) return;
+  mix.addEventListener("change", function () {
+    if (readHistory().length) autoCalculateRuns(runRecordsFromHistory());
+    if (currentSummary) { autoCalculating = true; try { handleCalculate(); } finally { autoCalculating = false; } }
+  });
+})();
 
 function renderPressureReadout(maxBackPressure) {
   if (!maxBackPressure) {
@@ -770,7 +790,7 @@ applyColGroups();
 function stageClass(result) {
   if (!result) return "st-none";
   const st = String(result.stage || "");
-  if (result.unsafe) return "st-unsafe";
+  if (result.unsafe || /^INVESTIGATE/.test(st)) return "st-unsafe";
   if (result.pass) return "st-pass";
   if (/->/.test(st)) return "st-handoff";
   if (/^Selectivity/i.test(st)) return "st-sel";
@@ -1293,7 +1313,16 @@ function readSpecs(runConditions) {
     currentSolvent: solventValue,
     currentLigand: ligandValue,
     maxPressure: Number(specMaxPressure.value),
+    mixAcnShare: readMixShare(runConditions),
   };
+}
+
+// ACN share of the mixed solvent's organic part: from the run name if it gives one, else the Specification (default 50:50).
+function readMixShare(runConditions) {
+  const el = document.getElementById("spec-mix-acn");
+  const fallback = el && el.value !== "" && Number.isFinite(Number(el.value)) ? Number(el.value) : 50;
+  const name = runConditions && runConditions.solvent ? runConditions.solvent : null;
+  return name && /MIX\D*\d/i.test(name) ? parseMixShare(name, fallback) : fallback;
 }
 
 function resolveMinPercentB(specs, history) {
@@ -2252,7 +2281,7 @@ function nextRunChanges(outcome) {
   if (outcome.selectivityInHeadline && sel) {
     if (sel.step === "temperature-40" || sel.step === "temperature-60") ch.temperature = sel.value;
     if (sel.step === "solvent-meoh") { ch.solvent = "MeOH"; if (typeof sel.percentB === "number") ch.percentB = String(sel.percentB); }
-    if (sel.step === "solvent-mix") { ch.solvent = "MIX"; }
+    if (sel.step === "solvent-mix") { ch.solvent = "MIX"; if (typeof sel.percentB === "number") ch.percentB = String(sel.percentB); }
     if (sel.step === "ligand") {
       if (chosenLigandColumn) {
         ch.ligand = chosenLigandColumn.ligand;
@@ -2490,7 +2519,7 @@ function buildEfficiencyCard(outcome) {
   }
   if (shown) {
     const rec = mk("div", "eff-rec");
-    rec.appendChild(mk("h4", null, chosen ? "Your chosen next run" : (eff.met ? "Method met" : "Recommended next run")));
+    rec.appendChild(mk("h4", null, chosen ? "Your chosen next run" : (eff.met ? "Method met" : "Best option: highest Rs with tR and BP in spec")));
     rec.appendChild(mk("p", "eff-rec-col", (shown.current ? "Current column: " : "") + shown.description + (shown.inLab ? "" : " (to order)") + " at " + shown.F.toFixed(2) + " mL/min"));
     const grid = mk("div", "eff-pred");
     const pcell = function (label, value, ok, specText) {
@@ -2513,16 +2542,17 @@ function buildEfficiencyCard(outcome) {
     } else {
       rec.appendChild(mk("p", "note", "No change: the current column and flow already meet the specs."));
     }
-    if (!eff.reachesSpec && !chosen) rec.appendChild(mk("p", "eff-none", "No column in your list reaches the Rs spec with the levers this case allows. This is the closest; the table below lists anything else that meets all three specs."));
+    if (!eff.reachesSpec && !chosen) rec.appendChild(mk("p", "eff-none", "No column in your list reaches the Rs spec within the tR and BP limits. This is the closest."));
+    if (!eff.met && !chosen && shown.matchesCase === false) rec.appendChild(mk("p", "note", "This combination goes beyond the table's action for case " + eff.caseNumber + " (" + eff.tableAction + "); it is shown because it gives the highest Rs with tR and BP in spec. The decision still names the table's action."));
     if (shown.column.ID !== ref.ID) rec.appendChild(mk("p", "note", "A different internal diameter gives the same plates at the same linear velocity; it is chosen here for the particle size it comes with, and it uses less solvent."));
     card.appendChild(rec);
   }
 
   // Ranked list of all options.
   const rows = [];
-  if (eff.best) rows.push({ o: eff.best, group: "Allowed by this case" });
-  (eff.inCase || []).forEach(function (o) { rows.push({ o: o, group: "Allowed by this case" }); });
-  (eff.others || []).forEach(function (o) { rows.push({ o: o, group: "Also meets all three specs (uses another lever)" }); });
+  if (eff.best) rows.push({ o: eff.best, group: eff.met ? "Optional: faster flow" : "Best option" });
+  (eff.inCase || []).forEach(function (o) { rows.push({ o: o, group: "Best option" }); });
+  (eff.others || []).forEach(function (o) { rows.push({ o: o, group: eff.met ? "Also meets all three specs" : "Other columns, ranked by Rs (each at its best flow)" }); });
   if (rows.length > 1) {
     const det = mk("details", "eff-options");
     det.open = effListOpen;
@@ -2545,6 +2575,7 @@ function buildEfficiencyCard(outcome) {
       if (i === 0 && !chosen) tr.className = "primary-option";
       if (shown && effOptionKey(o) === effOptionKey(shown)) tr.classList.add("chosen-option");
       const c0 = tr.insertCell(); c0.textContent = (o.current ? "Current: " : "") + o.description + (o.inLab ? "" : " (to order)");
+      if (!eff.met && o.matchesCase) c0.appendChild(mk("span", "eff-case-badge", "table action"));
       if (i === 0) { const b = mk("span", "primary-badge", "best"); c0.appendChild(b); }
       tr.insertCell().textContent = o.F.toFixed(2);
       const ct = tr.insertCell(); ct.textContent = o.tR.toFixed(1); if (!o.tROk) ct.className = "eff-badval";
@@ -2934,7 +2965,7 @@ window.isoCurrentFile = function () { return currentRunFileName; };
 function appClearAll() {
   handleClearHistory();
   currentSummary = null; currentMaxBackPressure = null; currentConditions = null; currentRunFileName = null; lastRunRecord = null; lastSpecsUsed = null;
-  [specPeaks, specTr, specRs, specRsFloor, specMinPercentB, specMaxPressure, specMinArea].forEach(function (el) { if (el) el.value = el.defaultValue; });
+  [specPeaks, specTr, specRs, specRsFloor, specMinPercentB, specMaxPressure, specMinArea, document.getElementById("spec-mix-acn")].forEach(function (el) { if (el) el.value = el.defaultValue; });
   currentRemovedPeaks = [];
   conditionsContainer.replaceChildren(makeEmptyMessage("No file loaded yet."));
   conditionsWarnings.replaceChildren();
