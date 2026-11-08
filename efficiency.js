@@ -313,11 +313,27 @@ function recommendEfficiency(ref, specs, trClass, rClass, userColumns) {
         if (a.col.inLab !== b.col.inLab) return a.col.inLab ? -1 : 1;
         return b.pred.Rs - a.pred.Rs;
     });
-    const next = nextList[0] || null;
-    out.next = next ? (next === best ? out.best : decorate(ref, next, specs)) : null;
-    out.nextIsBest = !!next && next === best;
+    let next = nextList[0] || null;
+    // On that column, the next run changes the flow only as far as it must: the fastest flow that
+    // still meets the Rs spec within the tR and BP limits (as in the lecturer's worked examples,
+    // e.g. decrease F to 0.98 mL/min for Rs 1.41, or the BP-limited flow after a smaller PS).
+    if (next && next.meetsAll && kase.goal !== "trspec") {
+        const fast = bestFlowFor(ref, next.col, specs, "speed");
+        if (fast.feasibleFlow) {
+            const ok = fast.tR <= specs.tRSpec + 1e-9 && (fast.BP === null || fast.BP <= specs.maxPressure + 1e-9) && fast.Rs >= specs.rsSpec - 1e-9;
+            if (ok && Math.abs(fast.F - next.pred.F) >= 0.005) next = Object.assign({}, next, { pred: fast, meetsAll: true });
+        }
+    }
+    const sameAsBest = !!next && !!best && next.col === best.col && Math.abs(next.pred.F - best.pred.F) < 0.005;
+    out.next = next ? (sameAsBest ? out.best : decorate(ref, next, specs)) : null;
+    out.nextIsBest = sameAsBest;
     out.inCase = [];
-    out.others = runnable.filter(function (e) { return e !== best; }).map(function (e) { return e === next ? out.next : decorate(ref, e, specs); });
+    out.others = runnable.filter(function (e) { return e !== best; }).map(function (e) { return decorate(ref, e, specs); });
+    if (out.next && !sameAsBest && next.col !== (best && best.col)) {
+        // Show the next run's flow in the ranked list too.
+        const i = out.others.findIndex(function (o) { return o.column === next.col; });
+        if (i !== -1) out.others[i] = out.next;
+    }
     // Case 1 (Rs below the floor): when no column and flow put all three in spec, the run goes to selectivity.
     if (key === "<<|<<" && !out.reachesSpec) out.selectivity = true;
     return out;
