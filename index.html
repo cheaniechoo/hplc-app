@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>HPLC method development assistant</title>
-  <link rel="stylesheet" href="style.css?v=20261109-0110">
+  <link rel="stylesheet" href="style.css?v=20261109-0120">
 </head>
 <body>
 
@@ -75,7 +75,7 @@
     </section>
     <section data-fsub-panel="mindmap" aria-labelledby="fc-mm-heading" hidden>
       <h2 id="fc-mm-heading">Mind map: the whole method development</h2>
-      <p class="hint">The full flow chart on one page, laid out like the course's RET–SEL–N–GRA chart: isocratic retention and selectivity down the left, efficiency once all 7 peaks are there in the middle, and gradient on the right.</p>
+      <p class="hint">The full flow chart on one page, laid out like the course's RET–SEL–N–GRA chart: isocratic retention and selectivity down the left, efficiency once all the peaks are there (# peaks = spec) in the middle, and gradient on the right.</p>
       <div id="mindmap" class="mindmap"></div>
     </section>
     <section data-fsub-panel="stages" aria-labelledby="fc-stages-heading">
@@ -147,7 +147,7 @@
         <div class="field">
           <label for="spec-rs-floor">Rs floor fallback</label>
           <input id="spec-rs-floor" type="number" min="0" step="0.1" value="1.0">
-          <p class="hint">The Rs floor is calculated for each 7-peak run from the tR, back-pressure and Rs specs (Awesome Calculator). This value is only used if a file lacks what that calculation needs.</p>
+          <p class="hint">The Rs floor is calculated for each run with all the peaks from the tR, back-pressure and Rs specs (Awesome Calculator). This value is only used if a file lacks what that calculation needs.</p>
         </div>
         <div class="field">
           <label for="spec-min-percent-b">Minimum %B (optional override)</label>
@@ -700,24 +700,24 @@
     </section>
   </main>
 
-  <script src="equipment-data.js?v=20261109-0110"></script>
-  <script src="efficiency.js?v=20261109-0110"></script>
-  <script src="logic.js?v=20261109-0110"></script>
-  <script src="monash-columns.js?v=20261109-0110"></script>
-  <script src="user-columns.js?v=20261109-0110"></script>
-  <script src="module-howto.js?v=20261109-0110"></script>
-  <script src="chromatogram.js?v=20261109-0110"></script>
-  <script src="logk-chart.js?v=20261109-0110"></script>
-  <script src="gradient.js?v=20261109-0110"></script>
-  <script src="app.js?v=20261109-0110"></script>
-  <script src="gradient-app.js?v=20261109-0110"></script>
-  <script src="guide-figures.js?v=20261109-0110"></script>
-  <script src="flowchart.js?v=20261109-0110"></script>
-  <script src="ligand-structures.js?v=20261109-0110"></script>
-  <script src="equipment-interactive.js?v=20261109-0110"></script>
-  <script src="eff-settings.js?v=20261109-0110"></script>
-  <script src="awesome-calc.js?v=20261109-0110"></script>
-  <script src="mindmap.js?v=20261109-0110"></script>
-  <script src="nav.js?v=20261109-0110"></script>
+  <script src="equipment-data.js?v=20261109-0120"></script>
+  <script src="efficiency.js?v=20261109-0120"></script>
+  <script src="logic.js?v=20261109-0120"></script>
+  <script src="monash-columns.js?v=20261109-0120"></script>
+  <script src="user-columns.js?v=20261109-0120"></script>
+  <script src="module-howto.js?v=20261109-0120"></script>
+  <script src="chromatogram.js?v=20261109-0120"></script>
+  <script src="logk-chart.js?v=20261109-0120"></script>
+  <script src="gradient.js?v=20261109-0120"></script>
+  <script src="app.js?v=20261109-0120"></script>
+  <script src="gradient-app.js?v=20261109-0120"></script>
+  <script src="guide-figures.js?v=20261109-0120"></script>
+  <script src="flowchart.js?v=20261109-0120"></script>
+  <script src="ligand-structures.js?v=20261109-0120"></script>
+  <script src="equipment-interactive.js?v=20261109-0120"></script>
+  <script src="eff-settings.js?v=20261109-0120"></script>
+  <script src="awesome-calc.js?v=20261109-0120"></script>
+  <script src="mindmap.js?v=20261109-0120"></script>
+  <script src="nav.js?v=20261109-0120"></script>
 </body>
 </html>

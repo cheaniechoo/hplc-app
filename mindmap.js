@@ -22,7 +22,7 @@
   pcts.forEach(function (p, i) { add("p" + i, "chev", 180, 190 + i * 38, 110, 30, p); });
   add("minb", "chev", 180, 494, 110, 30, "Min %B", { observe: true });
   add("intb", "chev", 180, 534, 130, 30, "Intermediate %B");
-  add("c1", "cloud", 130, 596, 96, 46, "#Pks<7");
+  add("c1", "cloud", 130, 596, 124, 50, "#Pks < spec");
   // ---- selectivity ----
   add("sel", "box", 150, 660, 140, 46, "SELECTIVITY");
   add("abd", "diamond", 300, 660, 120, 56, "ABD\nspacing");
@@ -36,12 +36,12 @@
     add(L[0] + "ot", "chev", 180, y0 + off + 76, 110, 30, "other °C", { faded: true });
     add(L[0] + "b1", "tag", 335, y0 + off + 19, 50, 22, "%B");
     add(L[0] + "b2", "tag", 335, y0 + off + 57, 50, 22, "%B");
-    add("c" + (k + 2), "cloud", 130, y0 + off + 136, 96, 46, "#Pks<7");
+    add("c" + (k + 2), "cloud", 130, y0 + off + 136, 124, 50, "#Pks < spec");
   });
   add("lig", "tall", 48, 1120, 46, 170, "Ligand");
 
   // ---- isocratic: all 7 peaks -> efficiency ----
-  add("pk7", "cloud", 600, 712, 170, 84, "#Pks = 7");
+  add("pk7", "cloud", 600, 712, 170, 84, "#Pks = spec");
   add("effhead", "box", 1060, 470, 210, 84, "Fine-tune: EFFICIENCY (N)\ninc Rs if < spec\nor dec tR if Rs > spec", { small: true });
   add("effdia", "diamond", 1290, 470, 190, 76, "Dec W, or shrink /\nexpand proportionally");
   const trs = [["trA", 610, "tR << spec"], ["trB", 770, "tR < spec"], ["trC", 930, "tR > spec"]];
@@ -79,9 +79,9 @@
   add("gup", "chev", 2080, 356, 180, 40, "Inc GS\ntG (or F) × 0.5", { g: "G1 ↑" });
   add("gdown", "chev", 2080, 418, 180, 40, "Dec GS\ntG × 1.2 (or F × 1.2)", { g: "G1 ↓" });
   add("gdphi", "chev", 2080, 480, 180, 40, "Inc GS\nby inc Δφ");
-  add("gless", "cloud", 1900, 410, 120, 56, "#Pks<7\nchange GS");
+  add("gless", "cloud", 1900, 410, 136, 60, "#Pks < spec\nchange GS");
   add("gchange", "tall", 1790, 420, 48, 210, "Change temp – solvent – ligand", { g: "G1 ✕", vertical: true });
-  add("gk", "cloud", 2310, 430, 140, 60, "#Pks = 7\nkeep GS cst");
+  add("gk", "cloud", 2310, 430, 140, 60, "#Pks = spec\nkeep GS cst");
   add("gkd", "diamond", 2450, 430, 120, 64, "KEEP\nGS CST");
   add("glt", "cloud", 2580, 330, 140, 64, "Rs < 1.4\nexpand tG\nwhile GS cst", { g: "G2" });
   add("g2", "chev", 2740, 330, 190, 48, "dec F × 0.8\n+ tG ÷ 0.8 → GS cst");
@@ -117,22 +117,22 @@
     pol: ["Polarity of the last peak", "The most hydrophobic compound elutes last; it sets the run time, so tR of the last peak is what is checked against the spec."],
     minb: ["Min %B", "The %B that puts the last peak exactly at the tR spec, from the log k vs %B fit (or estimated from one run). Observe the chromatogram here."],
     intb: ["Intermediate %B", "A %B between the last run and Min %B, when a full 10-point step would push tR past the spec."],
-    c1: ["#Pks < 7", "Fewer than 7 peaks with no retention left to use: compounds co-elute, so the spacing (selectivity) must change."],
-    c2: ["#Pks < 7", "The temperature ladder didn't separate them: change the solvent."], c3: ["#Pks < 7", "Still fewer than 7: try the mixed solvent."], c4: ["#Pks < 7", "Temperature and solvent changes didn't work: change the ligand and start retention again."],
+    c1: ["#Pks < spec", "Fewer peaks than the target (spec) with no retention left to use: compounds co-elute, so the spacing (selectivity) must change."],
+    c2: ["#Pks < spec", "The temperature ladder didn't separate them: change the solvent."], c3: ["#Pks < spec", "Still fewer peaks than the target: try the mixed solvent."], c4: ["#Pks < spec", "Temperature and solvent changes didn't work: change the ligand and start retention again."],
     sel: ["Selectivity", "Change the chemistry of the interactions: temperature first (only the oven), then solvent, then ligand."],
     abd: ["ABD: spacing", "Selectivity changes the spacing (α) between peaks; efficiency only narrows them."],
     lig: ["Change the ligand", "A new stationary phase: go back to retention (%B) on the new column."],
-    pk7: ["#Pks = 7", "All compounds are separated into peaks: from here the method is fine-tuned with efficiency (column and flow), using tR and Rs against the specs and the Rs floor."],
+    pk7: ["#Pks = spec", "All compounds are separated into peaks: from here the method is fine-tuned with efficiency (column and flow), using tR and Rs against the specs and the Rs floor."],
     effhead: ["Efficiency (N)", "Raise Rs with more plates (longer column, smaller particles, core-shell, lower F) or shorten the run when Rs has room. Rs grows with √N; the Rs floor says if it can still reach spec."],
     effdia: ["Peak width", "Efficiency narrows peaks (lower W) without moving them; tR and BP scale with L, F and 1/PS²."],
     trA: ["tR << spec", "The last peak is at most half the tR spec (editable in Efficiency settings): lots of time to spend on plates."],
     trB: ["tR < spec", "Some time left, but not enough for a longer column."], trC: ["tR > spec", "Over the run-time spec: the flow has to go up (after a smaller particle size if Rs needs it)."],
     grad: ["Gradient", "%B ramps up during the run. Gradient steepness GS = Δφ·Vm/(tG·F) sets the spacing; keep GS constant to keep selectivity."],
     scout: ["Scouting gradient", "5–100 %B in 20 min (up to 60). The first run of every new chemistry (temperature, solvent or ligand)."],
-    gup: ["G1 ↑ Increase GS", "Fewer than 7 peaks: same %B window, tG × 0.5 (steeper)."], gdown: ["G1 ↓ Decrease GS", "Still fewer than 7 after G1 ↑: back to the scouting run, tG × 1.2 (shallower)."],
-    gdphi: ["Increase GS by Δφ", "The last GS lever: a wider %B window."], gless: ["#Pks < 7: change GS", "Peaks are missing, so the spacing must change: change GS (tG or F first, Δφ last)."],
+    gup: ["G1 ↑ Increase GS", "Fewer peaks than the target: same %B window, tG × 0.5 (steeper)."], gdown: ["G1 ↓ Decrease GS", "Still fewer than the target after G1 ↑: back to the scouting run, tG × 1.2 (shallower)."],
+    gdphi: ["Increase GS by Δφ", "The last GS lever: a wider %B window."], gless: ["#Pks < spec: change GS", "Peaks are missing, so the spacing must change: change GS (tG or F first, Δφ last)."],
     gchange: ["G1 ✕ Change selectivity", "GS changes did not separate them: change temperature, then solvent, then ligand, and start again from a scouting gradient."],
-    gk: ["#Pks = 7: keep GS constant", "All peaks there: GS now stays constant so the spacing stays."], gkd: ["Keep GS constant", "Any change of tG is matched by F (or the %B window) so GS doesn't move."],
+    gk: ["#Pks = spec: keep GS constant", "All peaks there: GS now stays constant so the spacing stays."], gkd: ["Keep GS constant", "Any change of tG is matched by F (or the %B window) so GS doesn't move."],
     glt: ["G2 Rs < 1.4", "Stretch the chromatogram at constant GS: F × 0.8 and tG ÷ 0.8. Rs grows about as 1/√F."], g2: ["G2 conditions", "dec F × 0.8 + inc tG ÷ 0.8: GS stays the same."],
     gge: ["G3 Rs ≥ 1.4", "Trim the unused %B at both ends and cut tG in proportion (GS constant)."],
     gfinal: ["Final run (G3 → G4)", "%B ini = %B at the first peak − 20, %B fin = %B at the last peak + 5, tG cut in proportion. When all peaks, Rs and tR meet spec: method met, lock it (G4)."],
@@ -159,7 +159,7 @@
   });
   const view = el("g", { class: "mm-view" }, svg);
   // section bands
-  [[20, 80, 360, 1260, "ISOCRATIC · retention → selectivity"], [450, 380, 1290, 640, "ISOCRATIC · efficiency (all 7 peaks)"], [1730, 150, 1110, 520, "GRADIENT"]].forEach(function (b) {
+  [[20, 80, 360, 1260, "ISOCRATIC · retention → selectivity"], [450, 380, 1290, 640, "ISOCRATIC · efficiency (all peaks there)"], [1730, 150, 1110, 520, "GRADIENT"]].forEach(function (b) {
     el("rect", { x: b[0], y: b[1], width: b[2], height: b[3], rx: 18, class: "mm-band" }, view);
     const t = el("text", { x: b[0] + 16, y: b[1] + b[3] - 14, class: "mm-band-label" }, view); t.textContent = b[4];
   });
