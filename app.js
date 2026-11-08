@@ -2870,7 +2870,7 @@ function buildEfficiencyCard(outcome) {
     const tiles = [];
     if (eff.met) {
       tiles.push({ o: eff.best, kind: "opt", label: "Method met", sub: "Optional: fastest flow that keeps every spec" });
-      if (eff.shorter && effOptionKey(eff.shorter) !== effOptionKey(eff.best)) tiles.push({ o: eff.shorter, kind: "short", label: "Or: a shorter column", sub: "Shortest run with a shorter column from your list (like the lecturer's 100 mm example)" });
+      if (eff.shorter && effOptionKey(eff.shorter) !== effOptionKey(eff.best)) tiles.push({ o: eff.shorter, kind: "short", label: "Or: a shorter column", sub: "Shortest run with a shorter column from your list" });
     }
     else if (!eff.next || eff.nextIsBest) tiles.push({ o: eff.best, kind: "both", label: "Next run and most optimal", sub: "Follows the flow chart and is the best by your ranking (" + effRankWords() + ")" });
     else {
