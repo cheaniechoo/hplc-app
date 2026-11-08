@@ -272,7 +272,8 @@ function effOptionKey(o) {
 function allEfficiencyOptions(main) {
   const eff = main && main.efficiency;
   if (!eff) return [];
-  return [eff.best].concat(eff.inCase || [], eff.others || []).filter(Boolean);
+  // The next run can be the same column as the most optimal one at a different flow, so it is listed too.
+  return [eff.best, eff.next].concat(eff.inCase || [], eff.others || []).filter(Boolean);
 }
 function chosenEfficiencyOption(main, fileName) {
   if (!fileName || !main || !main.efficiency) return null;
