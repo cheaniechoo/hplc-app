@@ -311,7 +311,7 @@ function parseConditionsFromName(name) {
 const KNOWN_SOLVENTS = ["ACN", "MeOH", "MIX"];
 const KNOWN_MODES = ["ISO", "GRAD"];
 const KNOWN_SAMPLE_TYPES = ["CP", "BLK"];
-const KNOWN_LIGAND_CODES = ["C18aq", "C18n", "C18o", "C18", "C8", "BiPH", "IBD", "PFP"];
+const KNOWN_LIGAND_CODES = ["C18aq", "C18n", "C18o", "C18", "C8", "BiPH", "BIP", "IBD", "PFP"];
 const KNOWN_PARTICLE_CODES = ["P", "U", "F", "R"];
 function splitLigandAndParticleCode(token) {
     const upperToken = token.toUpperCase();
@@ -831,7 +831,8 @@ function displayResolution(summary, targetPeaks) {
     return { shown: raw, calculated: null, forcedZero: false };
 }
 function classifyRetentionTime(trLastPeak, tRSpec) {
-    if (trLastPeak <= tRSpec / 2) return "<<";
+    const frac = typeof EFF !== "undefined" && EFF.trFastFraction > 0 && EFF.trFastFraction < 1 ? EFF.trFastFraction : 0.5;
+    if (trLastPeak <= tRSpec * frac) return "<<";
     if (trLastPeak < tRSpec) return "<";
     if (trLastPeak > tRSpec) return ">";
     return "<";

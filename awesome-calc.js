@@ -398,7 +398,17 @@
   }
   const fillBtn = $("ac-fill"); if (fillBtn) fillBtn.addEventListener("click", fillFromRun);
   const exBtn = $("ac-example"); if (exBtn) exBtn.addEventListener("click", function () { st = JSON.parse(JSON.stringify(EXAMPLE)); save(); writeInputs(); render(); status("The course spreadsheet's example is loaded."); });
-  window.awesomeCalc = { fillFromRun: fillFromRun, state: function () { return st; }, compute: function () { const b = base(); return { base: b, floors: floors(b), scenario: scenario(b, st.scenario) }; } };
+  // Open the calculator on a column and flow chosen on the efficiency card.
+  function openWith(c) {
+    fillFromRun();
+    st.scenario = "custom";
+    st.custom = { spp: c.spp > 1 ? 1.5 : 1, L: c.L, ID: c.ID, PS: c.PS, F: Math.round(c.F * 100) / 100 };
+    save(); writeInputs(); render();
+    status("Filled from the current run, with " + (c.spp > 1 ? "core-shell " : "") + c.L + " × " + c.ID + " mm, " + c.PS + " µm at " + st.custom.F + " mL/min under \u201cYour column\u201d.");
+    const t = document.getElementById("tab-calc"); if (t) t.click();
+    const tabs = $("ac-scen-tabs"); if (tabs) setTimeout(function () { tabs.scrollIntoView({ behavior: "smooth", block: "start" }); }, 50);
+  }
+  window.awesomeCalc = { openWith: openWith, fillFromRun: fillFromRun, state: function () { return st; }, compute: function () { const b = base(); return { base: b, floors: floors(b), scenario: scenario(b, st.scenario) }; } };
 
   writeInputs();
   render();

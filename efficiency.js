@@ -19,10 +19,21 @@
 //   floor    = Rsspec x sqrt(N1 / Nmax)               fully porous
 //   floorSPP = Rsspec x sqrt(N1 / (1.5 x Nmax))       with a core-shell (SPP) bead
 
-const VD_A = 1.5;
-const VD_B = 3;
-const VD_C = 0.15;
-const SPP_FACTOR = 1.5;
+// Model settings (editable on the isocratic Specification step, "Efficiency settings").
+const EFF_DEFAULTS = {
+    A: 1.5, B: 3, C: 0.15, spp: 1.5,       // Van Deemter constants and the core-shell factor on N
+    trFastFraction: 0.5,                   // tR "<<" spec when tR <= this fraction of the spec
+    useColumnRatings: true,                // also keep BP under each column's own pressure rating
+    ratings: { "5": 5800, "3": 8700, "2.7": 8700, "1.9": 12000, "1.8": 12000 },
+    rankBy: "rs",                          // most optimal = "rs" | "time" | "solvent" | "changes"
+    leverOrder: [],                        // preferred changes first, e.g. ["L", "PS", "SPP"]
+    avoidOrder: false,                     // leave out columns marked "to order"
+};
+const EFF = JSON.parse(JSON.stringify(EFF_DEFAULTS));
+function setEfficiencySettings(s) {
+    const d = JSON.parse(JSON.stringify(EFF_DEFAULTS));
+    Object.keys(d).forEach(function (k) { EFF[k] = s && s[k] !== undefined ? s[k] : d[k]; });
+}
 
 function effNum(v) {
     const n = typeof v === "number" ? v : parseFloat(String(v === undefined || v === null ? "" : v).replace(/[^\d.]/g, ""));
@@ -58,7 +69,7 @@ function canonicalLigand(raw) {
 }
 
 function plateHeight(dp, u, spp) {
-    return (VD_A * dp + VD_B / u + VD_C * dp * dp * u) / (spp || 1);
+    return (EFF.A * dp + EFF.B / u + EFF.C * dp * dp * u) / (spp || 1);
 }
 
 // Build the reference run from what the file gives. Returns { ok, ref } or { ok:false, missing:[...] }.
@@ -80,7 +91,7 @@ function buildEfficiencyReference(conditions, summary, maxBackPressure) {
     if (tR === null) missing.push("tR of the last peak");
     if (Rs === null) missing.push("resolution");
     if (missing.length) return { ok: false, missing: missing };
-    const spp = isCoreShell(c.columnType) ? SPP_FACTOR : 1;
+    const spp = isCoreShell(c.columnType) ? EFF.spp : 1;
     const u1 = L / (t0 * 60);
     const N1 = L * 1000 / plateHeight(dp, u1, spp);
     return {
@@ -116,7 +127,7 @@ function flowForBpSpec(ref, col, bpSpec) {
 }
 // Flow at the Van Deemter optimum velocity on this column (best N).
 function flowAtOptimum(ref, col) {
-    const uOpt = Math.sqrt(VD_B / VD_C) / col.dp;
+    const uOpt = Math.sqrt(EFF.B / EFF.C) / col.dp;
     const uAtF1 = predictRun(ref, col, 1).u;
     return uOpt / uAtF1;
 }
@@ -124,13 +135,13 @@ function flowAtOptimum(ref, col) {
 function rsFloors(ref, specs) {
     const bpRatio = ref.BP === null ? 1 : specs.maxPressure / ref.BP;
     const HR = Math.sqrt(bpRatio * (specs.tRSpec / ref.tR));
-    const nMax = 1000 * ref.L * HR / (ref.dp * (VD_A + 2 * Math.sqrt(VD_B * VD_C)));
-    const nMaxSpp = nMax * SPP_FACTOR;
+    const nMax = 1000 * ref.L * HR / (ref.dp * (EFF.A + 2 * Math.sqrt(EFF.B * EFF.C)));
+    const nMaxSpp = nMax * EFF.spp;
     const fpp = specs.rsSpec * Math.sqrt(ref.N / nMax);
     const spp = specs.rsSpec * Math.sqrt(ref.N / nMaxSpp);
     // The column that reaches Nmax (calculator rows 115-118).
     const VF = HR * ref.tR / specs.tRSpec;
-    const psOpt = ref.dp * Math.sqrt(Math.sqrt(VD_B / VD_C) / (ref.dp * ref.u * VF));
+    const psOpt = ref.dp * Math.sqrt(Math.sqrt(EFF.B / EFF.C) / (ref.dp * ref.u * VF));
     const lOpt = ref.L * HR * psOpt / ref.dp;
     const fOpt = ref.F * (lOpt / ref.L) * ref.tR / specs.tRSpec;
     let verdict;
@@ -218,7 +229,7 @@ function candidateColumns(ref, userColumns) {
     seen.add(columnKey(current));
     for (const c of (userColumns || [])) {
         if (canonicalLigand(c.ligand) !== canonicalLigand(ref.ligand)) continue;
-        const col = { ligand: canonicalLigand(c.ligand), line: c.line || "", L: Number(c.L), ID: Number(c.ID), dp: Number(c.dp), spp: isCoreShell(c.line) ? SPP_FACTOR : 1, inLab: c.where !== "order", current: false };
+        const col = { ligand: canonicalLigand(c.ligand), line: c.line || "", L: Number(c.L), ID: Number(c.ID), dp: Number(c.dp), spp: isCoreShell(c.line) ? EFF.spp : 1, inLab: c.where !== "order", current: false };
         if (![col.L, col.ID, col.dp].every(Number.isFinite)) continue;
         const k = columnKey(col);
         if (seen.has(k)) continue;
@@ -254,13 +265,44 @@ function rankSpeed(a, b) {
 
 // The efficiency decision for one 7-peak run.
 //   trClass: "<<" | "<" | ">"     rClass: "<<" | "floor-spec" | ">"
+// Pressure limit for a column: the system limit, and (if switched on) the column's own rating.
+function bpLimitFor(col, specs) {
+    const r = EFF.useColumnRatings && EFF.ratings ? Number(EFF.ratings[String(Number(col.dp))]) : NaN;
+    return Number.isFinite(r) && r > 0 ? Math.min(specs.maxPressure, r) : specs.maxPressure;
+}
+function leverKind(l) { return l.charAt(0) === "L" ? "L" : l.indexOf("PS") === 0 ? "PS" : "SPP"; }
+function leverKinds(levers) { return Array.from(new Set(levers.map(leverKind))).sort(function (a, b) { return ["L", "PS", "SPP"].indexOf(a) - ["L", "PS", "SPP"].indexOf(b); }); }
+// Lower = more preferred: each kind of change costs its place in the user's order (unlisted = last).
+function leverPenalty(levers) {
+    const order = Array.isArray(EFF.leverOrder) ? EFF.leverOrder : [];
+    return leverKinds(levers).reduce(function (sum, k) { const i = order.indexOf(k); return sum + (i === -1 ? order.length : i); }, 0);
+}
+// The ranking for "most optimal", following the user's preference.
+function rankByPreference(a, b) {
+    if (a.meetsAll !== b.meetsAll) return a.meetsAll ? -1 : 1;
+    const mode = EFF.rankBy || "rs";
+    let d = 0;
+    if (mode === "time") d = Math.abs(a.pred.tR - b.pred.tR) > 0.05 ? a.pred.tR - b.pred.tR : 0;
+    else if (mode === "solvent") { const sa = a.pred.tR * a.pred.F, sb = b.pred.tR * b.pred.F; d = Math.abs(sa - sb) > 0.05 ? sa - sb : 0; }
+    else if (mode === "changes") d = a.levers.length - b.levers.length || leverPenalty(a.levers) - leverPenalty(b.levers);
+    else d = Math.abs(a.pred.Rs - b.pred.Rs) > 0.005 ? b.pred.Rs - a.pred.Rs : 0;
+    if (d) return d;
+    if (a.col.inLab !== b.col.inLab) return a.col.inLab ? -1 : 1;
+    const p = leverPenalty(a.levers) - leverPenalty(b.levers);
+    if (p) return p;
+    if (a.levers.length !== b.levers.length) return a.levers.length - b.levers.length;
+    if (Math.abs(a.pred.Rs - b.pred.Rs) > 0.005) return b.pred.Rs - a.pred.Rs;
+    return a.pred.tR - b.pred.tR;
+}
+const COMBOS = [["", "F only (current column)"], ["L", "L + F"], ["PS", "PS + F"], ["SPP", "SPP + F"], ["L|PS", "L + PS + F"], ["L|SPP", "L + SPP + F"], ["PS|SPP", "PS + SPP + F"], ["L|PS|SPP", "L + PS + SPP + F"]];
+
 function recommendEfficiency(ref, specs, trClass, rClass, userColumns) {
     const key = trClass + "|" + rClass;
     const kase = EFFICIENCY_CASES[key];
     const out = { caseKey: key, caseNumber: kase.n, caseLabel: kase.label, tableAction: kase.table, met: !!kase.met };
     if (kase.selectivity) { out.selectivity = true; return out; }
 
-    const cols = candidateColumns(ref, userColumns);
+    const cols = candidateColumns(ref, userColumns).filter(function (c) { return !EFF.avoidOrder || c.current || c.inLab; });
     out.columnsChecked = cols.length;
     const matchesCase = function (col, levers) {
         if (kase.met || kase.goal === "trspec") return !!col.current;
@@ -269,9 +311,10 @@ function recommendEfficiency(ref, specs, trClass, rClass, userColumns) {
     const evaluate = function (goal) {
         return cols.map(function (col) {
             const levers = leversUsed(ref, col);
-            const pred = bestFlowFor(ref, col, specs, goal);
+            const s2 = Object.assign({}, specs, { maxPressure: bpLimitFor(col, specs) });
+            const pred = bestFlowFor(ref, col, s2, goal);
             if (!pred.feasibleFlow) return { col: col, levers: levers, feasibleFlow: false, pred: null, meetsAll: false, refID: ref.ID, matchesCase: matchesCase(col, levers) };
-            const meetsAll = pred.tR <= specs.tRSpec + 1e-9 && (pred.BP === null || pred.BP <= specs.maxPressure + 1e-9) && pred.Rs >= specs.rsSpec - 1e-9;
+            const meetsAll = pred.tR <= specs.tRSpec + 1e-9 && (pred.BP === null || pred.BP <= s2.maxPressure + 1e-9) && pred.Rs >= specs.rsSpec - 1e-9;
             return { col: col, levers: levers, feasibleFlow: true, pred: pred, meetsAll: meetsAll, refID: ref.ID, matchesCase: matchesCase(col, levers) };
         }).filter(function (e) { return e.feasibleFlow; });
     };
@@ -284,21 +327,20 @@ function recommendEfficiency(ref, specs, trClass, rClass, userColumns) {
         out.best = best ? decorate(ref, best, specs) : null;
         out.inCase = [];
         out.others = runnable.filter(function (e) { return e !== best && e.meetsAll; }).map(function (e) { return decorate(ref, e, specs); });
+        // Like the lecturer's examples: a shorter column (at its fastest flow) can shorten the run too.
+        const shorter = runnable.filter(function (e) { return !e.col.current && e.meetsAll && e.col.L < ref.L; }).sort(function (a, b) { return a.pred.tR - b.pred.tR; })[0];
+        out.shorter = shorter ? decorate(ref, shorter, specs) : null;
+        out.combos = combosFrom(ref, runnable, specs);
         return out;
     }
 
     // Every column in the list (every combination of L, PS, bead and ID the user has), each at its best
     // flow: the Van Deemter optimum, raised if needed to keep tR <= spec, capped to keep BP <= max.
     // The best option is the one with the highest Rs while tR and BP stay in spec (lecturer's forum answer).
-    const runnable = evaluate("rs");
-    const byRs = function (a, b) {
-        if (a.meetsAll !== b.meetsAll) return a.meetsAll ? -1 : 1;
-        if (Math.abs(a.pred.Rs - b.pred.Rs) > 0.005) return b.pred.Rs - a.pred.Rs;
-        if (a.col.inLab !== b.col.inLab) return a.col.inLab ? -1 : 1;
-        if (a.levers.length !== b.levers.length) return a.levers.length - b.levers.length;
-        return a.pred.tR - b.pred.tR;
-    };
-    runnable.sort(byRs);
+    // Ranked by the user's preference (default: highest Rs). For "shortest run" or "least solvent"
+    // each column is taken at its fastest flow that still meets the specs.
+    const runnable = evaluate(EFF.rankBy === "time" || EFF.rankBy === "solvent" ? "speed" : "rs");
+    runnable.sort(rankByPreference);
     const inSpec = runnable.filter(function (e) { return e.pred.tR <= specs.tRSpec + 1e-9 && (e.pred.BP === null || e.pred.BP <= specs.maxPressure + 1e-9); });
     let best = runnable.find(function (e) { return e.meetsAll; }) || null;
     out.reachesSpec = !!best;
@@ -309,6 +351,8 @@ function recommendEfficiency(ref, specs, trClass, rClass, userColumns) {
     const nextList = runnable.filter(function (e) { return e.matchesCase; }).sort(function (a, b) {
         if (a.meetsAll !== b.meetsAll) return a.meetsAll ? -1 : 1;
         if (a.levers.length !== b.levers.length) return a.levers.length - b.levers.length;
+        const pp = leverPenalty(a.levers) - leverPenalty(b.levers);
+        if (pp) return pp;
         if (!!a.col.current !== !!b.col.current) return a.col.current ? -1 : 1;
         if (a.col.inLab !== b.col.inLab) return a.col.inLab ? -1 : 1;
         return b.pred.Rs - a.pred.Rs;
@@ -318,9 +362,10 @@ function recommendEfficiency(ref, specs, trClass, rClass, userColumns) {
     // still meets the Rs spec within the tR and BP limits (as in the lecturer's worked examples,
     // e.g. decrease F to 0.98 mL/min for Rs 1.41, or the BP-limited flow after a smaller PS).
     if (next && next.meetsAll && kase.goal !== "trspec") {
-        const fast = bestFlowFor(ref, next.col, specs, "speed");
+        const sN = Object.assign({}, specs, { maxPressure: bpLimitFor(next.col, specs) });
+        const fast = bestFlowFor(ref, next.col, sN, "speed");
         if (fast.feasibleFlow) {
-            const ok = fast.tR <= specs.tRSpec + 1e-9 && (fast.BP === null || fast.BP <= specs.maxPressure + 1e-9) && fast.Rs >= specs.rsSpec - 1e-9;
+            const ok = fast.tR <= specs.tRSpec + 1e-9 && (fast.BP === null || fast.BP <= sN.maxPressure + 1e-9) && fast.Rs >= specs.rsSpec - 1e-9;
             if (ok && Math.abs(fast.F - next.pred.F) >= 0.005) next = Object.assign({}, next, { pred: fast, meetsAll: true });
         }
     }
@@ -335,9 +380,19 @@ function recommendEfficiency(ref, specs, trClass, rClass, userColumns) {
         if (i !== -1) out.others[i] = out.next;
     }
     if (!out.reachesSpec) out.purchase = suggestPurchase(ref, specs, userColumns);
+    out.combos = combosFrom(ref, runnable, specs);
     // Case 1 (Rs below the floor): when no column and flow put all three in spec, the run goes to selectivity.
     if (key === "<<|<<" && !out.reachesSpec) out.selectivity = true;
     return out;
+}
+
+// The best option for each combination of changes (F, L + F, PS + F, SPP + F ... L + PS + SPP + F).
+function combosFrom(ref, runnable, specs) {
+    return COMBOS.map(function (c) {
+        const list = runnable.filter(function (e) { return leverKinds(e.levers).join("|") === c[0] && (c[0] !== "" || e.col.current); });
+        const best = list.slice().sort(rankByPreference)[0] || null;
+        return { key: c[0], label: c[1], count: list.length, option: best ? decorate(ref, best, specs) : null };
+    });
 }
 
 // Columns to buy: when nothing in the user's list reaches all three specs, search the usual
@@ -348,17 +403,16 @@ const BUY_IDS = [4.6, 3, 2.1];
 const BUY_FPP_PS = [5, 3, 1.9];
 const BUY_SPP_PS = [5, 2.7];
 function suggestPurchase(ref, specs, ownColumns) {
-    const own = new Set((ownColumns || []).map(function (c) { return [canonicalLigand(c.ligand), Number(c.L), Number(c.ID), Number(c.dp), isCoreShell(c.line) ? SPP_FACTOR : 1].join("|"); }));
+    const own = new Set((ownColumns || []).map(function (c) { return [canonicalLigand(c.ligand), Number(c.L), Number(c.ID), Number(c.dp), isCoreShell(c.line) ? EFF.spp : 1].join("|"); }));
     own.add([ref.ligand, ref.L, ref.ID, ref.dp, ref.spp].join("|"));
     const found = [];
-    [[1, BUY_FPP_PS], [SPP_FACTOR, BUY_SPP_PS]].forEach(function (bead) {
+    [[1, BUY_FPP_PS], [EFF.spp, BUY_SPP_PS]].forEach(function (bead) {
         bead[1].forEach(function (dp) {
             BUY_LENGTHS.forEach(function (L) {
                 BUY_IDS.forEach(function (ID) {
                     const col = { ligand: ref.ligand, line: bead[0] > 1 ? "core-shell" : "fully porous", L: L, ID: ID, dp: dp, spp: bead[0], inLab: false, current: false, buy: true };
                     if (own.has([col.ligand, L, ID, dp, col.spp].join("|"))) return;
-                    const limit = (typeof COLUMN_MAX_PSI !== "undefined" && COLUMN_MAX_PSI[String(dp)]) || Infinity;
-                    const s2 = Object.assign({}, specs, { maxPressure: Math.min(specs.maxPressure, limit) });
+                    const s2 = Object.assign({}, specs, { maxPressure: bpLimitFor(col, specs) });
                     let pred = bestFlowFor(ref, col, s2, "rs");
                     if (!pred.feasibleFlow) return;
                     if (!(pred.Rs >= specs.rsSpec - 1e-9 && pred.tR <= specs.tRSpec + 1e-9 && (pred.BP === null || pred.BP <= s2.maxPressure + 1e-9))) return;
@@ -397,7 +451,7 @@ function decorate(ref, e, specs) {
     return {
         column: col, description: describeColumn(col), current: !!col.current, inLab: col.inLab,
         levers: e.levers, leverWords: e.levers.map(function (l) { return LEVER_WORDS[l]; }),
-        F: p.F, tR: p.tR, BP: p.BP, Rs: p.Rs, N: p.N, t0: p.t0, solvent: p.solvent,
+        F: p.F, tR: p.tR, BP: p.BP, Rs: p.Rs, N: p.N, t0: p.t0, u: p.u, solvent: p.solvent,
         meetsAll: e.meetsAll, changes: changes, matchesCase: !!e.matchesCase,
         tROk: p.tR <= specs.tRSpec + 1e-9, bpOk: p.BP === null ? null : p.BP <= specs.maxPressure + 1e-9, rsOk: p.Rs >= specs.rsSpec - 1e-9,
     };
@@ -425,12 +479,13 @@ function predictionText(p) {
 
 if (typeof window !== "undefined") {
     window.hplcEfficiency = {
+        settings: EFF, defaults: EFF_DEFAULTS, setSettings: setEfficiencySettings,
         buildReference: buildEfficiencyReference, predictRun: predictRun, rsFloors: rsFloors,
         recommend: recommendEfficiency, suggestPurchase: suggestPurchase, actionText: efficiencyActionText, predictionText: predictionText,
         isCoreShell: isCoreShell, canonicalLigand: canonicalLigand, cases: EFFICIENCY_CASES,
-        SPP_FACTOR: SPP_FACTOR,
+        get SPP_FACTOR() { return EFF.spp; },
     };
 }
 if (typeof module !== "undefined") {
-    module.exports = { buildEfficiencyReference, predictRun, rsFloors, recommendEfficiency, efficiencyActionText, predictionText, isCoreShell, canonicalLigand, EFFICIENCY_CASES, flowForTrSpec, flowForBpSpec };
+    module.exports = { EFF, setEfficiencySettings, buildEfficiencyReference, predictRun, rsFloors, recommendEfficiency, efficiencyActionText, predictionText, isCoreShell, canonicalLigand, EFFICIENCY_CASES, flowForTrSpec, flowForBpSpec };
 }

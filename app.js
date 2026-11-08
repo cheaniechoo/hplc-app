@@ -2688,6 +2688,139 @@ function buildPurchaseBlock(eff, specs, ref) {
   return box;
 }
 
+// ---- Efficiency helpers: ranking words, floor-moved note, calculator link, Van Deemter plot, combinations ----
+function effRankWords() {
+  const m = (window.hplcEfficiency && window.hplcEfficiency.settings.rankBy) || "rs";
+  return { rs: "highest Rs", time: "shortest run", solvent: "least solvent", changes: "fewest changes" }[m] || "highest Rs";
+}
+const lastFloors = {};
+function floorMovedNote(fileName, fl, source, specs) {
+  if (!fileName || !fl) return null;
+  const now = { fpp: fl.fpp, spp: fl.spp, used: source === "spp" ? fl.spp : fl.fpp, rsSpec: specs.rsSpec, tRSpec: specs.tRSpec, maxPressure: specs.maxPressure };
+  // Keep the last two different floors for this run, so the note survives the page redrawing the card.
+  const rec = lastFloors[fileName] || {};
+  if (!rec.cur || Math.abs(rec.cur.used - now.used) >= 0.005) { rec.prev = rec.cur || null; rec.cur = now; lastFloors[fileName] = rec; }
+  const before = rec.prev;
+  if (!before || Math.abs(before.used - now.used) < 0.005) return null;
+  const why = [];
+  if (before.rsSpec !== now.rsSpec) why.push("Rs spec " + before.rsSpec + " → " + now.rsSpec);
+  if (before.tRSpec !== now.tRSpec) why.push("tR spec " + before.tRSpec + " → " + now.tRSpec + " min");
+  if (before.maxPressure !== now.maxPressure) why.push("max pressure " + before.maxPressure + " → " + now.maxPressure + " psi");
+  const p = document.createElement("p");
+  p.className = "eff-floor-moved";
+  p.textContent = "The Rs floor moved with the specification: " + before.used.toFixed(2) + " → " + now.used.toFixed(2) + (why.length ? " (" + why.join(", ") + ")" : " (column list or settings changed)") + ".";
+  return p;
+}
+function calcButton(o) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "link-button eff-calc-link"; b.textContent = "Open in Awesome Calculator \u2192";
+  b.addEventListener("click", function () {
+    if (window.awesomeCalc && window.awesomeCalc.openWith) window.awesomeCalc.openWith({ spp: o.column.spp, L: o.column.L, ID: o.column.ID, PS: o.column.dp, F: o.F });
+  });
+  return b;
+}
+function buildVanDeemterPlot(ref, o) {
+  const E = window.hplcEfficiency, S = E ? E.settings : { A: 1.5, B: 3, C: 0.15 };
+  const H = function (dp, u, spp) { return (S.A * dp + S.B / u + S.C * dp * dp * u) / (spp || 1); };
+  const wrap = document.createElement("details");
+  wrap.className = "eff-vd"; wrap.open = vdOpen;
+  wrap.addEventListener("toggle", function () { vdOpen = wrap.open; });
+  const sum = document.createElement("summary"); sum.textContent = "Van Deemter curve: where the runs sit"; wrap.appendChild(sum);
+  const W = 560, Ht = 240, pl = 48, pr = 14, pt = 14, pb = 38;
+  const uNow = ref.u, uNew = o.u || (o.column.L / (o.t0 * 60));
+  const uMax = Math.max(4, uNow * 1.4, uNew * 1.4);
+  const curves = [{ dp: ref.dp, spp: ref.spp, cls: "vd-cur", name: "Current: " + ref.dp + " \u00b5m" + (ref.spp > 1 ? " core-shell" : "") }];
+  if (o.column.dp !== ref.dp || o.column.spp !== ref.spp) curves.push({ dp: o.column.dp, spp: o.column.spp, cls: "vd-new", name: "Chosen: " + o.column.dp + " \u00b5m" + (o.column.spp > 1 ? " core-shell" : "") });
+  let hMax = 0;
+  curves.forEach(function (c) { for (let u = 0.3; u <= uMax; u += 0.05) hMax = Math.max(hMax, Math.min(H(c.dp, u, c.spp), 60)); });
+  hMax = Math.ceil(Math.max(hMax, H(ref.dp, uNow, ref.spp) * 1.2) / 5) * 5;
+  const x = function (u) { return pl + (u / uMax) * (W - pl - pr); };
+  const y = function (h) { return pt + (1 - h / hMax) * (Ht - pt - pb); };
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + Ht + '" role="img" aria-label="Van Deemter curves">';
+  for (let h = 0; h <= hMax; h += hMax > 30 ? 10 : 5) svg += '<line class="vd-grid" x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y(h) + '" y2="' + y(h) + '"/><text class="vd-tick" x="' + (pl - 6) + '" y="' + (y(h) + 4) + '" text-anchor="end">' + h + '</text>';
+  for (let u = 0; u <= uMax + 1e-9; u += 1) svg += '<text class="vd-tick" x="' + x(u) + '" y="' + (Ht - pb + 16) + '" text-anchor="middle">' + u + '</text>';
+  svg += '<text class="vd-axis" x="' + ((pl + W - pr) / 2) + '" y="' + (Ht - 4) + '" text-anchor="middle">linear velocity u (mm/s)</text>';
+  svg += '<text class="vd-axis" transform="translate(12 ' + ((pt + Ht - pb) / 2) + ') rotate(-90)" text-anchor="middle">HETP (\u00b5m)</text>';
+  curves.forEach(function (c) {
+    let d = "";
+    for (let u = 0.3; u <= uMax; u += 0.04) { const h = H(c.dp, u, c.spp); if (h > hMax) continue; d += (d ? " L" : "M") + x(u).toFixed(1) + " " + y(h).toFixed(1); }
+    svg += '<path class="' + c.cls + '" d="' + d + '"/>';
+    const uo = Math.sqrt(S.B / S.C) / c.dp;
+    svg += '<line class="vd-opt ' + c.cls + '" x1="' + x(uo) + '" x2="' + x(uo) + '" y1="' + y(0) + '" y2="' + y(H(c.dp, uo, c.spp)) + '"/>';
+  });
+  const pt1 = [x(uNow), y(H(ref.dp, uNow, ref.spp))], pt2 = [x(uNew), y(H(o.column.dp, uNew, o.column.spp))];
+  svg += '<circle class="vd-pt-cur" cx="' + pt1[0] + '" cy="' + pt1[1] + '" r="5"/><text class="vd-lbl" x="' + (pt1[0] + 8) + '" y="' + (pt1[1] - 8) + '">this run</text>';
+  svg += '<circle class="vd-pt-new" cx="' + pt2[0] + '" cy="' + pt2[1] + '" r="5"/><text class="vd-lbl" x="' + (pt2[0] + 8) + '" y="' + (pt2[1] + 16) + '">next run</text>';
+  svg += '</svg>';
+  const fig = document.createElement("div"); fig.className = "eff-vd-fig"; fig.innerHTML = svg; wrap.appendChild(fig);
+  const leg = document.createElement("p"); leg.className = "note";
+  leg.textContent = curves.map(function (c) { return c.name + " (optimum u " + (Math.sqrt(S.B / S.C) / c.dp).toFixed(2) + " mm/s, dashed line)"; }).join("; ") + ". This run: u " + uNow.toFixed(2) + " mm/s, HETP " + H(ref.dp, uNow, ref.spp).toFixed(1) + " \u00b5m. Next run: u " + uNew.toFixed(2) + " mm/s, HETP " + H(o.column.dp, uNew, o.column.spp).toFixed(1) + " \u00b5m. The lower the HETP, the more plates and the higher Rs.";
+  wrap.appendChild(leg);
+  return wrap;
+}
+let vdOpen = true, combosOpen = true;
+function buildCombosTable(eff, specs, ref) {
+  const det = document.createElement("details");
+  det.className = "eff-combos"; det.open = combosOpen;
+  det.addEventListener("toggle", function () { combosOpen = det.open; });
+  const sum = document.createElement("summary"); sum.textContent = "Every combination of changes (best column and flow for each)"; det.appendChild(sum);
+  const t = document.createElement("table"); t.className = "eff-why-table eff-combo-table";
+  const h = t.createTHead().insertRow();
+  ["Changes", "Best column from your list", "F", "tR", "BP", "Rs", "All 3 specs", ""].forEach(function (x) { const th = document.createElement("th"); th.textContent = x; h.appendChild(th); });
+  const body = t.createTBody();
+  eff.combos.forEach(function (c) {
+    const r = body.insertRow();
+    const k = r.insertCell(); k.textContent = c.label; k.className = "eff-why-lbl";
+    if (!c.option) { const td = r.insertCell(); td.colSpan = 7; td.className = "eff-combo-none"; td.textContent = "No column in your list makes this change within the tR and BP limits."; return; }
+    const o = c.option;
+    r.insertCell().textContent = (o.current ? "Current: " : "") + o.description + (o.inLab ? "" : " (to order)");
+    r.insertCell().textContent = o.F.toFixed(2);
+    const tr = r.insertCell(); tr.textContent = o.tR.toFixed(1); if (!o.tROk) tr.className = "eff-badval";
+    const bp = r.insertCell(); bp.textContent = o.BP === null ? "?" : String(Math.round(o.BP)); if (o.bpOk === false) bp.className = "eff-badval";
+    const rs = r.insertCell(); rs.textContent = o.Rs.toFixed(2); rs.className = o.rsOk ? "eff-goodval" : "eff-badval";
+    const ok = r.insertCell(); const pill = document.createElement("span"); pill.className = "ac-pill " + (o.meetsAll ? "ok" : "bad"); pill.textContent = o.meetsAll ? "Yes" : "No"; ok.appendChild(pill);
+    r.insertCell().appendChild(calcButton(o));
+  });
+  const sc = document.createElement("div"); sc.className = "table-scroll"; sc.appendChild(t); det.appendChild(sc);
+  det.appendChild(Object.assign(document.createElement("p"), { className: "note", textContent: "F is always adjusted for the column (its best flow within tR and BP). Within each row the column is chosen by your ranking (" + effRankWords() + "); change it in Specification \u2192 Efficiency settings." }));
+  return det;
+}
+// When this run's conditions match a next run the app predicted earlier, compare prediction and result.
+function buildPredictionCheck() {
+  if (!currentRunFileName || !currentConditions || !currentSummary) return null;
+  const c = currentConditions;
+  const dims = String(c.columnDimensions || "").split("x").map(Number);
+  const F = parseFloat(c.flowRate);
+  if (dims.length !== 3 || !(F > 0)) return null;
+  const lig = typeof canonicalLigand === "function" ? canonicalLigand(c.ligand) : c.ligand;
+  const spp = typeof isCoreShell === "function" && isCoreShell(c.columnType);
+  const h = readHistory();
+  const at = h.findIndex(function (e) { return e.fileName === currentRunFileName; });
+  for (let i = (at === -1 ? h.length : at) - 1; i >= 0; i--) {
+    const e = h[i], ef = e.result && e.result.efficiency;
+    if (!ef || !ef.next || !ef.prediction) continue;
+    const n = ef.next;
+    if (canonicalLigand(n.ligand) !== lig || n.L !== dims[0] || n.ID !== dims[1] || n.dp !== dims[2] || !!n.coreShell !== !!spp || Math.abs(n.F - F) > 0.03) continue;
+    const card = document.createElement("div"); card.className = "result-card pred-check";
+    card.appendChild(Object.assign(document.createElement("h3"), { textContent: "Prediction check" }));
+    card.appendChild(Object.assign(document.createElement("p"), { className: "hint", textContent: "This run uses the column and flow the app suggested after " + e.fileName + ". Predicted vs measured:" }));
+    const grid = document.createElement("div"); grid.className = "pred-grid";
+    const rows = [["tR last peak", ef.prediction.tR, currentSummary.trLastPeak, " min", 1], ["Back pressure", ef.prediction.BP, currentMaxBackPressure ? currentMaxBackPressure.maxActual : null, " psi", 0], ["Rs (worst pair)", ef.prediction.Rs, currentSummary.minResolution, "", 2]];
+    rows.forEach(function (r) {
+      const d = document.createElement("div"); d.className = "pred-cell";
+      d.appendChild(Object.assign(document.createElement("span"), { textContent: r[0] }));
+      const ok = typeof r[1] === "number" && typeof r[2] === "number";
+      d.appendChild(Object.assign(document.createElement("strong"), { textContent: (typeof r[1] === "number" ? r[1].toFixed(r[4]) : "?") + " \u2192 " + (typeof r[2] === "number" ? r[2].toFixed(r[4]) : "?") + r[3] }));
+      if (ok) { const pct = (r[2] - r[1]) / r[1] * 100; const sm = document.createElement("small"); sm.textContent = (pct >= 0 ? "+" : "") + pct.toFixed(0) + "% vs predicted"; sm.className = Math.abs(pct) <= 10 ? "pred-good" : "pred-off"; d.appendChild(sm); }
+      grid.appendChild(d);
+    });
+    card.appendChild(grid);
+    card.appendChild(Object.assign(document.createElement("p"), { className: "note", textContent: "Within about 10% means the Awesome Calculator model fits your column well. Larger gaps usually come from a different packing quality, pressure from the system rather than the column, or peaks moving relative to each other (selectivity), which the model does not predict." }));
+    return card;
+  }
+  return null;
+}
+
 function buildEfficiencyCard(outcome) {
   const eff = outcome && outcome.efficiency;
   const ref = outcome && outcome.efficiencyRef;
@@ -2718,6 +2851,8 @@ function buildEfficiencyCard(outcome) {
       ? "Your column list has a core-shell column with this ligand, so the SPP floor is used."
       : "No core-shell column with this ligand is in your list, so the fully porous floor is used.") +
       (fl.bpKnown ? "" : " This file has no pressure trace, so the floor only accounts for the tR headroom.")));
+    const moved = floorMovedNote(currentRunFileName, fl, outcome.floorSource, specs);
+    if (moved) card.appendChild(moved);
   }
 
   if (eff.selectivity) {
@@ -2733,11 +2868,14 @@ function buildEfficiencyCard(outcome) {
   if (shown) {
     // Two suggestions side by side: the next run the flow chart allows, and the most optimal option.
     const tiles = [];
-    if (eff.met) tiles.push({ o: eff.best, kind: "opt", label: "Method met", sub: "Optional: fastest flow that keeps every spec" });
-    else if (!eff.next || eff.nextIsBest) tiles.push({ o: eff.best, kind: "both", label: "Next run and most optimal", sub: "Follows the flow chart and gives the highest Rs" });
+    if (eff.met) {
+      tiles.push({ o: eff.best, kind: "opt", label: "Method met", sub: "Optional: fastest flow that keeps every spec" });
+      if (eff.shorter && effOptionKey(eff.shorter) !== effOptionKey(eff.best)) tiles.push({ o: eff.shorter, kind: "short", label: "Or: a shorter column", sub: "Shortest run with a shorter column from your list (like the lecturer's 100 mm example)" });
+    }
+    else if (!eff.next || eff.nextIsBest) tiles.push({ o: eff.best, kind: "both", label: "Next run and most optimal", sub: "Follows the flow chart and is the best by your ranking (" + effRankWords() + ")" });
     else {
       tiles.push({ o: eff.next, kind: "next", label: "1 · Next run", sub: "Smallest step the flow chart allows (" + eff.tableAction.replace(/\.$/, "") + ")" });
-      tiles.push({ o: eff.best, kind: "opt", label: "2 · Most optimal", sub: "Highest Rs with tR and BP in spec, from every column in your list" });
+      tiles.push({ o: eff.best, kind: "opt", label: "2 · Most optimal", sub: "Best by your ranking (" + effRankWords() + ") with tR and BP in spec, from every column in your list" });
     }
     if (picked && !tiles.some(function (t) { return effOptionKey(t.o) === effOptionKey(picked); })) tiles.push({ o: picked, kind: "own", label: "Your choice", sub: "Picked from the ranked list" });
     const pair = mk("div", "eff-pair");
@@ -2780,19 +2918,22 @@ function buildEfficiencyCard(outcome) {
         });
         tile.appendChild(btn);
       }
+      tile.appendChild(calcButton(o));
       pair.appendChild(tile);
     });
     card.appendChild(pair);
     if (!eff.reachesSpec && !eff.met) card.appendChild(mk("p", "eff-none", "No column in your list reaches the Rs spec within the tR and BP limits. The most optimal option is the closest."));
     if (!eff.reachesSpec && !eff.met) card.appendChild(buildPurchaseBlock(eff, specs, ref));
     if (shown.column.ID !== ref.ID) card.appendChild(mk("p", "note", "A different internal diameter gives the same plates at the same linear velocity; it is chosen for the particle size it comes with, and it uses less solvent."));
+    card.appendChild(buildVanDeemterPlot(ref, shown));
   }
+  if (Array.isArray(eff.combos)) card.appendChild(buildCombosTable(eff, specs, ref));
 
   // Ranked list of all options.
   const rows = [];
   if (eff.best) rows.push({ o: eff.best, group: eff.met ? "Optional: faster flow" : "Most optimal" });
   (eff.inCase || []).forEach(function (o) { rows.push({ o: o, group: "Most optimal" }); });
-  (eff.others || []).forEach(function (o) { rows.push({ o: o, group: eff.met ? "Also meets all three specs" : "Other columns, ranked by Rs (each at its best flow)" }); });
+  (eff.others || []).forEach(function (o) { rows.push({ o: o, group: eff.met ? "Also meets all three specs" : "Other columns, ranked by " + effRankWords() + " (each at its best flow)" }); });
   if (rows.length > 1) {
     const det = mk("details", "eff-options");
     det.open = effListOpen;
@@ -2800,14 +2941,14 @@ function buildEfficiencyCard(outcome) {
     det.appendChild(mk("summary", null, "Other options, ranked (" + (rows.length - 1) + ")"));
     const table = mk("table", "options-table eff-table");
     const head = table.createTHead().insertRow();
-    ["Column", "F (mL/min)", "tR (min)", "BP (psi)", "Rs", "Changes", ""].forEach(function (h) { head.appendChild(mk("th", null, h)); });
+    ["Column", "F (mL/min)", "tR (min)", "BP (psi)", "Rs", "Time saved (min)", "Solvent (mL) / saved", "Changes", ""].forEach(function (h) { head.appendChild(mk("th", null, h)); });
     const body = table.createTBody();
     let lastGroup = null;
     const cap = 25;
     rows.slice(0, cap).forEach(function (r, i) {
       if (r.group !== lastGroup) {
         const g = body.insertRow();
-        const c = g.insertCell(); c.colSpan = 7; c.className = "eff-group"; c.textContent = r.group;
+        const c = g.insertCell(); c.colSpan = 9; c.className = "eff-group"; c.textContent = r.group;
         lastGroup = r.group;
       }
       const o = r.o;
@@ -2822,6 +2963,8 @@ function buildEfficiencyCard(outcome) {
       const ct = tr.insertCell(); ct.textContent = o.tR.toFixed(1); if (!o.tROk) ct.className = "eff-badval";
       const cb = tr.insertCell(); cb.textContent = o.BP === null ? "?" : String(Math.round(o.BP)); if (o.bpOk === false) cb.className = "eff-badval";
       const cr = tr.insertCell(); cr.textContent = o.Rs.toFixed(2); if (!o.rsOk) cr.className = "eff-badval";
+      const ts = tr.insertCell(); const saved = ref.tR - o.tR; ts.textContent = (saved >= 0 ? "" : "+") + Math.abs(saved).toFixed(1) + (saved >= 0 ? "" : " longer"); ts.className = saved > 0.05 ? "eff-goodval" : saved < -0.05 ? "eff-slower" : "";
+      const sv = tr.insertCell(); const solv = o.tR * o.F, solvSaved = ref.tR * ref.F - solv; sv.textContent = solv.toFixed(1) + " / " + (solvSaved >= 0 ? "" : "−") + Math.abs(solvSaved).toFixed(1);
       tr.insertCell().textContent = o.changes.join("; ") || "none";
       const pc = tr.insertCell();
       const btn = mk("button", i === 0 ? "" : "secondary", shown && effOptionKey(o) === effOptionKey(shown) ? "Chosen" : "Use this");
@@ -2832,7 +2975,7 @@ function buildEfficiencyCard(outcome) {
       });
       pc.appendChild(btn);
     });
-    det.appendChild(table);
+    const tsc = mk("div", "table-scroll"); tsc.appendChild(table); det.appendChild(tsc);
     if (rows.length > cap) det.appendChild(mk("p", "note", "Showing the first " + cap + " of " + rows.length + "."));
     card.appendChild(det);
   }
@@ -2861,6 +3004,7 @@ function renderResults(outcomes, options) {
   for (const outcome of outcomes) {
     const resultCard = buildResultCard(outcome);
     cards.push(resultCard);
+    if (outcome === outcomes.filter(Boolean).slice(-1)[0]) { try { const pc = buildPredictionCheck(); if (pc) cards.push(pc); } catch (err) { /* no check */ } }
     // The selectivity path sits right under the action it belongs to, joined to that card.
     if (outcome && outcome.selectivity) {
       const selCard = buildSelectivityCard(outcome.selectivity, outcome.selectivityInHeadline === true);

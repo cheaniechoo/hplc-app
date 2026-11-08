@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>HPLC method development assistant</title>
-  <link rel="stylesheet" href="style.css?v=20261108-2345">
+  <link rel="stylesheet" href="style.css?v=20261109-0040">
 </head>
 <body>
 
@@ -150,6 +150,40 @@
           <p class="hint">Leave blank to let the tool derive this from the log K fit across your runs.</p>
         </div>
         </div>
+      </details>
+      <details class="spec-block spec-adv eff-settings" id="eff-settings">
+        <summary><span class="spec-icon eff-icon" aria-hidden="true">N</span><span class="spec-adv-title">Efficiency settings and preferences</span><span class="spec-pill">Optional &middot; defaults = Awesome Calculator</span><span id="eff-changed-pill" class="spec-pill changed" hidden></span></summary>
+        <p class="hint">How the efficiency (N) options are ranked, and the model behind the predictions. Changing a value decides every run again. Values changed from the defaults are marked in yellow.</p>
+        <div id="eff-warn" class="adv-warn" role="alert" hidden></div>
+        <div class="adv-group adv-prefs">
+          <h4>Your preferences</h4>
+          <div class="specs-grid wide">
+            <div class="field"><label for="eff-rankby">&ldquo;Most optimal&rdquo; means</label><select id="eff-rankby"><option value="rs" selected>Highest Rs (lecturer's answer)</option><option value="time">Shortest run (lowest tR)</option><option value="solvent">Least solvent (tR &times; F)</option><option value="changes">Fewest changes to the method</option></select><p class="hint">Always among the options that meet tR, BP and Rs.</p></div>
+            <div class="field"><label for="eff-levers">Changes you'd rather make first</label><select id="eff-levers"><option value="" selected>No preference</option><option value="L,PS,SPP">Length, then particle size, then core-shell</option><option value="L,SPP,PS">Length, then core-shell, then particle size</option><option value="PS,L,SPP">Particle size, then length, then core-shell</option><option value="PS,SPP,L">Particle size, then core-shell, then length</option><option value="SPP,L,PS">Core-shell, then length, then particle size</option><option value="SPP,PS,L">Core-shell, then particle size, then length</option></select><p class="hint">Breaks ties, and orders the &ldquo;next run&rdquo; when several single changes work (e.g. price: a longer column is cheaper than a smaller particle size).</p></div>
+            <div class="field"><label class="g-check"><input id="eff-avoid-order" type="checkbox"> Only use columns in the lab (leave out the ones marked &ldquo;to order&rdquo;)</label></div>
+          </div>
+        </div>
+        <div class="adv-group adv-rules">
+          <h4>Model (Awesome Calculator)</h4>
+          <div class="specs-grid wide">
+            <div class="field"><label for="eff-vda">Van Deemter A (× PS)</label><input id="eff-vda" type="number" step="0.05" value="1.5"></div>
+            <div class="field"><label for="eff-vdb">Van Deemter B</label><input id="eff-vdb" type="number" step="0.1" value="3"></div>
+            <div class="field"><label for="eff-vdc">Van Deemter C (× PS²)</label><input id="eff-vdc" type="number" step="0.01" value="0.15"></div>
+            <div class="field"><label for="eff-spp">Core-shell (SPP) factor on N</label><input id="eff-spp" type="number" step="0.05" value="1.5"></div>
+            <div class="field"><label for="eff-trfast">&ldquo;tR &laquo; spec&rdquo; means tR at most this fraction of the spec</label><input id="eff-trfast" type="number" step="0.05" value="0.5"><p class="hint">0.5 = half the spec (the workshop table).</p></div>
+          </div>
+        </div>
+        <div class="adv-group adv-instr">
+          <h4>Column pressure ratings</h4>
+          <div class="specs-grid wide">
+            <div class="field"><label class="g-check"><input id="eff-use-ratings" type="checkbox" checked> Also keep the back pressure under each column's own rating</label></div>
+            <div class="field"><label for="eff-r5">5 µm columns (psi)</label><input id="eff-r5" type="number" step="100" value="5800"></div>
+            <div class="field"><label for="eff-r3">3 / 2.7 µm columns (psi)</label><input id="eff-r3" type="number" step="100" value="8700"></div>
+            <div class="field"><label for="eff-r19">1.8 / 1.9 µm columns (psi)</label><input id="eff-r19" type="number" step="100" value="12000"></div>
+          </div>
+          <p class="hint">From the lab's &ldquo;Minimum and Maximum Pressure&rdquo; sheet. The system limit (Max system pressure above) always applies too.</p>
+        </div>
+        <div class="adv-actions"><button type="button" id="eff-reset" class="secondary">Reset to the defaults</button> <span id="eff-status" class="adv-status" role="status"></span></div>
       </details>
       <div class="spec-block-head cols-head"><span class="spec-icon cols" aria-hidden="true">&#9638;</span><h3 class="cols-heading">Your columns</h3></div>
       <p class="hint">Efficiency recommendations only use columns ticked here, with the same ligand as the run. It starts as the Monash column list (in the lab). Untick the ones you don't have and add any you could order; a column in the lab is preferred when two options both meet the specs. A Raptor (core-shell) column in the list switches the Rs floor to the SPP floor.</p>
@@ -661,22 +695,23 @@
     </section>
   </main>
 
-  <script src="equipment-data.js?v=20261108-2345"></script>
-  <script src="efficiency.js?v=20261108-2345"></script>
-  <script src="logic.js?v=20261108-2345"></script>
-  <script src="monash-columns.js?v=20261108-2345"></script>
-  <script src="user-columns.js?v=20261108-2345"></script>
-  <script src="module-howto.js?v=20261108-2345"></script>
-  <script src="chromatogram.js?v=20261108-2345"></script>
-  <script src="logk-chart.js?v=20261108-2345"></script>
-  <script src="gradient.js?v=20261108-2345"></script>
-  <script src="app.js?v=20261108-2345"></script>
-  <script src="gradient-app.js?v=20261108-2345"></script>
-  <script src="guide-figures.js?v=20261108-2345"></script>
-  <script src="flowchart.js?v=20261108-2345"></script>
-  <script src="ligand-structures.js?v=20261108-2345"></script>
-  <script src="equipment-interactive.js?v=20261108-2345"></script>
-  <script src="awesome-calc.js?v=20261108-2345"></script>
-  <script src="nav.js?v=20261108-2345"></script>
+  <script src="equipment-data.js?v=20261109-0040"></script>
+  <script src="efficiency.js?v=20261109-0040"></script>
+  <script src="logic.js?v=20261109-0040"></script>
+  <script src="monash-columns.js?v=20261109-0040"></script>
+  <script src="user-columns.js?v=20261109-0040"></script>
+  <script src="module-howto.js?v=20261109-0040"></script>
+  <script src="chromatogram.js?v=20261109-0040"></script>
+  <script src="logk-chart.js?v=20261109-0040"></script>
+  <script src="gradient.js?v=20261109-0040"></script>
+  <script src="app.js?v=20261109-0040"></script>
+  <script src="gradient-app.js?v=20261109-0040"></script>
+  <script src="guide-figures.js?v=20261109-0040"></script>
+  <script src="flowchart.js?v=20261109-0040"></script>
+  <script src="ligand-structures.js?v=20261109-0040"></script>
+  <script src="equipment-interactive.js?v=20261109-0040"></script>
+  <script src="eff-settings.js?v=20261109-0040"></script>
+  <script src="awesome-calc.js?v=20261109-0040"></script>
+  <script src="nav.js?v=20261109-0040"></script>
 </body>
 </html>
