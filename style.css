@@ -1394,3 +1394,8 @@ td.ac-pill { display: table-cell; border-radius: 0; }
 .eff-buy-add { margin-top: .3rem; font-size: .85rem; padding: .3rem .7rem; }
 .eff-buy-table { margin-top: .6rem; }
 .eff-buy-table td:last-child { text-align: right; }
+
+/* Selectivity path joined under its action card */
+.result-card.has-path { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-style: dashed; }
+.result-card.path-joined { margin-top: 0; border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+.result-card.path-joined > h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .04em; color: #55636b; margin-top: .2rem; }

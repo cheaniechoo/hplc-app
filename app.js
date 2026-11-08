@@ -2859,7 +2859,15 @@ function renderResults(outcomes, options) {
 
   lastRenderedOutcomes = outcomes;
   for (const outcome of outcomes) {
-    cards.push(buildResultCard(outcome));
+    const resultCard = buildResultCard(outcome);
+    cards.push(resultCard);
+    // The selectivity path sits right under the action it belongs to, joined to that card.
+    if (outcome && outcome.selectivity) {
+      const selCard = buildSelectivityCard(outcome.selectivity, outcome.selectivityInHeadline === true);
+      resultCard.classList.add("has-path");
+      selCard.classList.add("path-joined");
+      cards.push(selCard);
+    }
     if (outcome && outcome.efficiency) {
       const effCard = buildEfficiencyCard(outcome);
       if (effCard) cards.push(effCard);
@@ -2869,9 +2877,6 @@ function renderResults(outcomes, options) {
       if (nextCard) cards.push(nextCard);
     }
 
-    if (outcome && outcome.selectivity) {
-      cards.push(buildSelectivityCard(outcome.selectivity, outcome.selectivityInHeadline === true));
-    }
 
     if (outcome && outcome.selectivityStillOpen) {
       cards.push(buildOtherOptionsCard(outcome.selectivityStillOpen));
