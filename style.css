@@ -1470,7 +1470,7 @@ line.vd-new { stroke: #2f7d4f; }
 .mm-controls { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .5rem; }
 .mm-btn { padding: .3rem .8rem; font-size: .85rem; }
 .mm-canvas { border: 1px solid var(--line); border-radius: .7rem; background: #fcfcfa; overflow: hidden; }
-.mm-svg { display: block; width: 100%; aspect-ratio: 2860 / 1360; min-height: 380px; max-height: 80vh; cursor: grab; touch-action: none; user-select: none; }
+.mm-svg { display: block; width: 100%; aspect-ratio: 2860 / 1440; min-height: 380px; max-height: 80vh; cursor: grab; touch-action: none; user-select: none; }
 .mm-svg.dragging { cursor: grabbing; }
 .mm-band { fill: #f5f7f8; stroke: #e2e7ea; stroke-dasharray: 6 6; }
 .mm-band-label { font-size: 15px; font-weight: 800; fill: #9aa7ae; letter-spacing: .06em; }

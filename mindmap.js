@@ -6,7 +6,7 @@
   const host = document.getElementById("mindmap");
   if (!host) return;
   const NS = "http://www.w3.org/2000/svg";
-  const W = 2860, H = 1360;
+  const W = 2860, H = 1440;
 
   // [id, shape, x, y, w, h, text, extra]
   const N = [];
@@ -22,23 +22,24 @@
   pcts.forEach(function (p, i) { add("p" + i, "chev", 180, 190 + i * 38, 110, 30, p); });
   add("minb", "chev", 180, 494, 110, 30, "Min %B", { observe: true });
   add("intb", "chev", 180, 534, 130, 30, "Intermediate %B");
-  add("c1", "cloud", 130, 596, 124, 50, "#Pks < spec");
+  add("c1", "cloud", 150, 598, 124, 50, "#Pks < spec");
   // ---- selectivity ----
   add("sel", "box", 150, 660, 140, 46, "SELECTIVITY");
   add("abd", "diamond", 300, 660, 120, 56, "ABD\nspacing");
-  const ladder = [["t", 720, "ACN"], ["s", 930, "Solvent: MeOH"], ["m", 1140, "Solvent: MIX"]];
+  // Each block: (solvent) -> 40 °C -> 60 °C -> other °C -> #Pks < spec, stacked with clear gaps.
+  const ladder = [["t", "ACN"], ["s", "Solvent: MeOH"], ["m", "Solvent: MIX"]];
+  let y = 722;
   ladder.forEach(function (L, k) {
-    const y0 = L[1];
-    if (k > 0) add(L[0] + "0", "chev", 180, y0, 140, 30, L[2]);
-    const off = k > 0 ? 38 : 0;
-    add(L[0] + "40", "chev", 180, y0 + off, 110, 30, "40 °C");
-    add(L[0] + "60", "chev", 180, y0 + off + 38, 110, 30, "60 °C", { observe: true });
-    add(L[0] + "ot", "chev", 180, y0 + off + 76, 110, 30, "other °C", { faded: true });
-    add(L[0] + "b1", "tag", 335, y0 + off + 19, 50, 22, "%B");
-    add(L[0] + "b2", "tag", 335, y0 + off + 57, 50, 22, "%B");
-    add("c" + (k + 2), "cloud", 130, y0 + off + 136, 124, 50, "#Pks < spec");
+    if (k > 0) { add(L[0] + "0", "chev", 180, y, 140, 30, L[1]); y += 40; }
+    add(L[0] + "40", "chev", 180, y, 110, 30, "40 °C");
+    add(L[0] + "60", "chev", 180, y + 38, 110, 30, "60 °C", { observe: true });
+    add(L[0] + "ot", "chev", 180, y + 76, 110, 30, "other °C", { faded: true });
+    add(L[0] + "b1", "tag", 335, y + 19, 50, 22, "%B");
+    add(L[0] + "b2", "tag", 335, y + 57, 50, 22, "%B");
+    add("c" + (k + 2), "cloud", 150, y + 136, 124, 50, "#Pks < spec");
+    y += 136 + 66;
   });
-  add("lig", "tall", 48, 1120, 46, 170, "Ligand");
+  add("lig", "tall", 46, 1190, 46, 170, "Ligand");
 
   // ---- isocratic: all 7 peaks -> efficiency ----
   add("pk7", "cloud", 600, 712, 170, 84, "#Pks = spec");
@@ -83,10 +84,10 @@
   add("gchange", "tall", 1790, 420, 48, 210, "Change temp – solvent – ligand", { g: "G1 ✕", vertical: true });
   add("gk", "cloud", 2310, 430, 140, 60, "#Pks = spec\nkeep GS cst");
   add("gkd", "diamond", 2450, 430, 120, 64, "KEEP\nGS CST");
-  add("glt", "cloud", 2580, 330, 140, 64, "Rs < 1.4\nexpand tG\nwhile GS cst", { g: "G2" });
-  add("g2", "chev", 2740, 330, 190, 48, "dec F × 0.8\n+ tG ÷ 0.8 → GS cst");
-  add("gge", "cloud", 2580, 540, 140, 60, "Rs ≥ 1.4\nshrink both ends", { g: "G3" });
-  add("gfinal", "chev", 2740, 540, 220, 92, "Final run:\n%B ini = %B 1st peak − 20\n%B fin = %B last peak + 5\nGS cst", { g: "G3 → G4", small: true });
+  add("glt", "cloud", 2555, 330, 140, 64, "Rs < 1.4\nexpand tG\nwhile GS cst", { g: "G2" });
+  add("g2", "chev", 2745, 330, 180, 48, "dec F × 0.8\n+ tG ÷ 0.8 → GS cst");
+  add("gge", "cloud", 2555, 540, 140, 60, "Rs ≥ 1.4\nshrink both ends", { g: "G3" });
+  add("gfinal", "chev", 2745, 540, 210, 92, "Final run:\n%B ini = %B 1st peak − 20\n%B fin = %B last peak + 5\nGS cst", { g: "G3 → G4", small: true });
 
   const byId = {}; N.forEach(function (n) { byId[n.id] = n; });
 
@@ -159,7 +160,7 @@
   });
   const view = el("g", { class: "mm-view" }, svg);
   // section bands
-  [[20, 80, 360, 1260, "ISOCRATIC · retention → selectivity"], [450, 380, 1290, 640, "ISOCRATIC · efficiency (all peaks there)"], [1730, 150, 1110, 520, "GRADIENT"]].forEach(function (b) {
+  [[20, 80, 360, 1345, "ISOCRATIC · retention → selectivity"], [450, 380, 1290, 640, "ISOCRATIC · efficiency (all peaks there)"], [1730, 150, 1110, 520, "GRADIENT"]].forEach(function (b) {
     el("rect", { x: b[0], y: b[1], width: b[2], height: b[3], rx: 18, class: "mm-band" }, view);
     const t = el("text", { x: b[0] + 16, y: b[1] + b[3] - 14, class: "mm-band-label" }, view); t.textContent = b[4];
   });
