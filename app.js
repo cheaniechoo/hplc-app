@@ -873,7 +873,7 @@ function renderHistory() {
   const body = table.createTBody();
   for (const entry of history) {
     const tr = body.insertRow();
-    tr.className = "hist-row " + stageClass(entry.result);
+    tr.className = "hist-row " + stageClass(entry.result) + (entry.fileName === currentRunFileName ? " iso-current" : "");
     const pr = parsedFor(entry);
     for (const [, key, grp] of columns) {
       const td = tr.insertCell();
@@ -891,9 +891,13 @@ function renderHistory() {
       const plain = function (t) { td.textContent = t === null || t === undefined ? "" : String(t); };
       if (key === "run") {
         const n = String(pr.c.runNumber || "").replace(/^0+(?=\d)/, "");
-        const strong = document.createElement("strong");
-        strong.textContent = n ? "R" + n.padStart(2, "0") : "";
-        td.appendChild(strong);
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "link-button";
+        btn.textContent = n ? "R" + n.padStart(2, "0") : "Run";
+        btn.title = "Open this run on the isocratic dashboard";
+        btn.addEventListener("click", function () { openHistoryRun(entry.fileName); });
+        td.appendChild(btn);
         const small = document.createElement("small");
         small.className = "hist-file";
         small.textContent = entry.fileName;
@@ -1488,6 +1492,68 @@ function handleCalculate(choice) {
   updateSpecBanner();
 }
 
+
+// Opens a run from the history on the dashboard (conditions, peaks, chromatogram, recommendation),
+// rebuilt from what the history stored, so the file doesn't need loading again.
+function openHistoryRun(fileName) {
+  const entry = readHistory().filter(function (e) { return e.fileName === fileName; })[0];
+  if (!entry) return;
+  let conditions = {}, warnings = [];
+  try { const p = parseConditionsFromName(fileName); conditions = p.conditions; warnings = p.warnings || []; } catch (err) { conditions = {}; }
+  let kept = [], removed = [], summary;
+  if (Array.isArray(entry.rawPeaks) && entry.rawPeaks.length) {
+    const filt = filterSmallPeaks(entry.rawPeaks, readMinArea());
+    kept = filt.kept; removed = filt.removed;
+    summary = summarizeRun(kept);
+    const notice = smallPeaksNotice(filt);
+    if (notice) warnings.unshift(notice);
+  } else {
+    kept = entry.chrom && Array.isArray(entry.chrom.peaks) ? entry.chrom.peaks : [];
+    summary = { numPeaks: entry.numPeaks, trLastPeak: entry.trLastPeak, minResolution: entry.minResolution, t0: entry.t0 };
+  }
+  const bp = typeof entry.maxPressure === "number" ? { maxActual: entry.maxPressure, units: "psi" } : null;
+
+  currentSummary = summary;
+  currentMaxBackPressure = bp;
+  currentConditions = conditions;
+  currentRunFileName = fileName;
+  currentRemovedPeaks = removed;
+  userConfirmedEarlierTemperatures = false;
+  userChoseSolventChange = false;
+  showTryAnotherTemperatureMessage = false;
+  chosenLigandColumn = null;
+  lastRunRecord = { fileName: fileName, summary: summary, maxBackPressure: bp, conditions: conditions, removedPeaks: removed.length };
+
+  renderNameMismatchAlert(null, fileName);
+  renderConditions(conditions);
+  renderWarnings(warnings);
+  renderPeaks(kept, removed);
+  renderPressureReadout(bp);
+  const box = document.getElementById("chromatogram-container");
+  if (box) {
+    if (entry.chrom) {
+      const h = document.createElement("h3"); h.textContent = "Chromatogram";
+      const note = document.createElement("p"); note.className = "hint";
+      note.textContent = (entry.chrom.real ? "Detector trace stored in the run history (thinned copy of the file's trace)." : "Rebuilt from the peak table (the file had no detector trace).") + " Load the file again to see the full-resolution trace.";
+      const fig = document.createElement("div"); fig.className = "run-chrom-wrap";
+      fig.innerHTML = chromatogramSVGFromData(entry.chrom, fileName);
+      box.replaceChildren(h, note, fig);
+    } else {
+      box.innerHTML = '<p class="empty">The chromatogram for this run wasn’t stored. Load the file again to see it.</p>';
+    }
+  }
+  resultContainer.replaceChildren();
+  summaryOutcome = null;
+  calculateBtn.disabled = false;
+  autoCalculating = true;
+  try { handleCalculate(); } finally { autoCalculating = false; }
+  renderHistory();
+  renderRunSummary();
+  selectTab("flowchart");
+  showSub("result");
+  showUploadStatus("Showing “" + fileName + "” from the run history.", false);
+  window.scrollTo(0, 0);
+}
 
 // Rebuilds a run record for every run in the history, in run order.
 function runRecordsFromHistory() {
