@@ -1466,8 +1466,8 @@ function decide(summary, specs, history, options) {
             const b = eff.best;
             result.prediction = predictionText(b);
             result.message = "Case " + eff.caseNumber + " of the efficiency table (" + eff.caseLabel + "). Flow chart: " + eff.tableAction + "." +
-                " Predicted for the next run: " + predictionText(b) + "." +
-                (eff.met ? "" : " Best option = the column and flow with the highest Rs that keep tR and back pressure in spec, from every column in your list (each at its Van Deemter optimum flow, raised for tR, capped for BP).") +
+                (eff.met || !eff.next || eff.nextIsBest ? " Predicted for the next run: " + predictionText(b) + "." : " Next run predicted: " + predictionText(eff.next) + ". Most optimal predicted: " + predictionText(b) + ".") +
+                (eff.met ? "" : " Next run = the smallest step the flow chart's action allows (only the changes the table names). Most optimal = the column and flow with the highest Rs that keep tR and back pressure in spec, from every column in your list (each at its Van Deemter optimum flow, raised for tR, capped for BP).") +
                 (eff.reachesSpec ? "" : " No column in your list reaches the Rs spec within the tR and BP limits; this is the closest one.");
             if (eff.met) { result.stage = "Complete"; result.pass = true; }
             else result.stage = "Efficiency";

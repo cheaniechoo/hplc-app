@@ -20,7 +20,6 @@ const MAIN_TABS = {
   flowchart: ["tab-flowchart", "panel-flowchart"],
   gradient: ["tab-gradient", "panel-gradient"],
   ghistory: ["tab-ghistory", "panel-ghistory"],
-  gadvanced: ["tab-gadvanced", "panel-gadvanced"],
   history: ["tab-history", "panel-history"],
   equipment: ["tab-equipment", "panel-equipment"],
   naming: ["tab-naming", "panel-naming"],
@@ -2560,64 +2559,67 @@ function buildEfficiencyCard(outcome) {
   const chosen = chosenEfficiencyOption(outcome, currentRunFileName);
   const shown = chosen || eff.best;
   const picked = pickedEfficiencyOption(outcome, currentRunFileName);
-  if (eff.best && picked && effOptionKey(picked) !== effOptionKey(eff.best)) {
-    // Switch between the recommended option and the user's own pick.
-    const sw = mk("div", "eff-switch");
-    sw.setAttribute("role", "group");
-    sw.setAttribute("aria-label", "Which option to use for the next run");
-    const opt = function (label, o, key) {
-      const on = effOptionKey(o) === effOptionKey(shown);
-      const btn = mk("button", "eff-switch-btn" + (on ? " on" : ""));
-      btn.type = "button";
-      btn.setAttribute("aria-pressed", on ? "true" : "false");
-      btn.appendChild(mk("span", "eff-switch-label", label));
-      btn.appendChild(mk("span", "eff-switch-desc", o.description + " at " + o.F.toFixed(2) + " mL/min"));
-      btn.addEventListener("click", function () {
-        if (on) return;
-        saveChosenEfficiency(currentRunFileName, key);
-        renderResults(lastRenderedOutcomes, { stay: true });
-      });
-      return btn;
-    };
-    sw.appendChild(opt("Recommended", eff.best, null));
-    sw.appendChild(opt("Your choice", picked, effOptionKey(picked)));
-    card.appendChild(sw);
-  }
   if (shown) {
-    const rec = mk("div", "eff-rec");
-    rec.appendChild(mk("h4", null, chosen ? "Your chosen next run" : (eff.met ? "Method met" : "Best option: highest Rs with tR and BP in spec")));
-    rec.appendChild(mk("p", "eff-rec-col", (shown.current ? "Current column: " : "") + shown.description + (shown.inLab ? "" : " (to order)") + " at " + shown.F.toFixed(2) + " mL/min"));
-    const grid = mk("div", "eff-pred");
-    const pcell = function (label, value, ok, specText) {
-      const d = mk("div", "eff-pred-cell" + (ok === true ? " ok" : ok === false ? " bad" : ""));
-      d.appendChild(mk("span", "eff-floor-label", label));
-      d.appendChild(mk("strong", null, value));
-      if (specText) d.appendChild(mk("span", "eff-spec", specText));
-      return d;
-    };
-    grid.appendChild(pcell("Predicted tR last peak", shown.tR.toFixed(1) + " min", shown.tROk, "spec " + specs.tRSpec + " min or less"));
-    grid.appendChild(pcell("Predicted back pressure", shown.BP === null ? "unknown" : Math.round(shown.BP) + " psi", shown.bpOk, "limit " + specs.maxPressure + " psi"));
-    grid.appendChild(pcell("Predicted Rs", shown.Rs.toFixed(2), shown.rsOk, "spec " + specs.rsSpec));
-    grid.appendChild(pcell("Predicted N last peak", String(Math.round(shown.N)), null, "now " + Math.round(ref.N)));
-    rec.appendChild(grid);
-    if (shown.changes.length) {
-      const chips = mk("p", "eff-changes");
-      chips.appendChild(mk("span", "eff-floor-label", "Changes: "));
-      shown.changes.forEach(function (t) { chips.appendChild(mk("span", "nr-chip", t)); });
-      rec.appendChild(chips);
-    } else {
-      rec.appendChild(mk("p", "note", "No change: the current column and flow already meet the specs."));
+    // Two suggestions side by side: the next run the flow chart allows, and the most optimal option.
+    const tiles = [];
+    if (eff.met) tiles.push({ o: eff.best, kind: "opt", label: "Method met", sub: "Optional: fastest flow that keeps every spec" });
+    else if (!eff.next || eff.nextIsBest) tiles.push({ o: eff.best, kind: "both", label: "Next run and most optimal", sub: "Follows the flow chart and gives the highest Rs" });
+    else {
+      tiles.push({ o: eff.next, kind: "next", label: "1 · Next run", sub: "Smallest step the flow chart allows (" + eff.tableAction.replace(/\.$/, "") + ")" });
+      tiles.push({ o: eff.best, kind: "opt", label: "2 · Most optimal", sub: "Highest Rs with tR and BP in spec, from every column in your list" });
     }
-    if (!eff.reachesSpec && !chosen) rec.appendChild(mk("p", "eff-none", "No column in your list reaches the Rs spec within the tR and BP limits. This is the closest."));
-    if (!eff.met && !chosen && shown.matchesCase === false) rec.appendChild(mk("p", "note", "This combination goes beyond the table's action for case " + eff.caseNumber + " (" + eff.tableAction + "); it is shown because it gives the highest Rs with tR and BP in spec. The decision still names the table's action."));
-    if (shown.column.ID !== ref.ID) rec.appendChild(mk("p", "note", "A different internal diameter gives the same plates at the same linear velocity; it is chosen here for the particle size it comes with, and it uses less solvent."));
-    card.appendChild(rec);
+    if (picked && !tiles.some(function (t) { return effOptionKey(t.o) === effOptionKey(picked); })) tiles.push({ o: picked, kind: "own", label: "Your choice", sub: "Picked from the ranked list" });
+    const pair = mk("div", "eff-pair");
+    tiles.forEach(function (t) {
+      const o = t.o;
+      const inUse = effOptionKey(o) === effOptionKey(shown);
+      const tile = mk("div", "eff-tile eff-tile-" + t.kind + (inUse ? " in-use" : ""));
+      const top = mk("div", "eff-tile-top");
+      top.appendChild(mk("span", "eff-tile-label", t.label));
+      if (inUse) top.appendChild(mk("span", "eff-tile-inuse", "✓ Used for the next run"));
+      tile.appendChild(top);
+      tile.appendChild(mk("p", "eff-tile-sub", t.sub));
+      tile.appendChild(mk("p", "eff-rec-col", (o.current ? "Current column: " : "") + o.description + (o.inLab ? "" : " (to order)") + " at " + o.F.toFixed(2) + " mL/min"));
+      const grid = mk("div", "eff-pred");
+      const pcell = function (label, value, ok, specText) {
+        const d = mk("div", "eff-pred-cell" + (ok === true ? " ok" : ok === false ? " bad" : ""));
+        d.appendChild(mk("span", "eff-floor-label", label));
+        d.appendChild(mk("strong", null, value));
+        if (specText) d.appendChild(mk("span", "eff-spec", specText));
+        return d;
+      };
+      grid.appendChild(pcell("tR last peak", o.tR.toFixed(1) + " min", o.tROk, "spec ≤ " + specs.tRSpec));
+      grid.appendChild(pcell("Back pressure", o.BP === null ? "unknown" : Math.round(o.BP) + " psi", o.bpOk, "limit " + specs.maxPressure));
+      grid.appendChild(pcell("Rs", o.Rs.toFixed(2), o.rsOk, "spec " + specs.rsSpec));
+      grid.appendChild(pcell("N last peak", String(Math.round(o.N)), null, "now " + Math.round(ref.N)));
+      tile.appendChild(grid);
+      if (o.changes.length) {
+        const chips = mk("p", "eff-changes");
+        chips.appendChild(mk("span", "eff-floor-label", "Changes: "));
+        o.changes.forEach(function (c) { chips.appendChild(mk("span", "nr-chip", c)); });
+        tile.appendChild(chips);
+      } else tile.appendChild(mk("p", "note", "No change: the current column and flow already meet the specs."));
+      if (!o.meetsAll && !eff.met) tile.appendChild(mk("p", "eff-tile-warn", "Does not reach every spec" + (o.rsOk ? "" : " (Rs stays below " + specs.rsSpec + ")") + "."));
+      if (!inUse) {
+        const btn = mk("button", "secondary eff-tile-btn", "Use this for the next run");
+        btn.type = "button";
+        btn.addEventListener("click", function () {
+          saveChosenEfficiency(currentRunFileName, effOptionKey(o) === effOptionKey(eff.best) ? null : effOptionKey(o));
+          renderResults(lastRenderedOutcomes, { stay: true });
+        });
+        tile.appendChild(btn);
+      }
+      pair.appendChild(tile);
+    });
+    card.appendChild(pair);
+    if (!eff.reachesSpec && !eff.met) card.appendChild(mk("p", "eff-none", "No column in your list reaches the Rs spec within the tR and BP limits. The most optimal option is the closest."));
+    if (shown.column.ID !== ref.ID) card.appendChild(mk("p", "note", "A different internal diameter gives the same plates at the same linear velocity; it is chosen for the particle size it comes with, and it uses less solvent."));
   }
 
   // Ranked list of all options.
   const rows = [];
-  if (eff.best) rows.push({ o: eff.best, group: eff.met ? "Optional: faster flow" : "Best option" });
-  (eff.inCase || []).forEach(function (o) { rows.push({ o: o, group: "Best option" }); });
+  if (eff.best) rows.push({ o: eff.best, group: eff.met ? "Optional: faster flow" : "Most optimal" });
+  (eff.inCase || []).forEach(function (o) { rows.push({ o: o, group: "Most optimal" }); });
   (eff.others || []).forEach(function (o) { rows.push({ o: o, group: eff.met ? "Also meets all three specs" : "Other columns, ranked by Rs (each at its best flow)" }); });
   if (rows.length > 1) {
     const det = mk("details", "eff-options");
@@ -2642,7 +2644,8 @@ function buildEfficiencyCard(outcome) {
       if (shown && effOptionKey(o) === effOptionKey(shown)) tr.classList.add("chosen-option");
       const c0 = tr.insertCell(); c0.textContent = (o.current ? "Current: " : "") + o.description + (o.inLab ? "" : " (to order)");
       if (!eff.met && o.matchesCase) c0.appendChild(mk("span", "eff-case-badge", "table action"));
-      if (i === 0) { const b = mk("span", "primary-badge", "best"); c0.appendChild(b); }
+      if (i === 0) { const b = mk("span", "primary-badge", eff.met ? "best" : "most optimal"); c0.appendChild(b); }
+      if (!eff.met && eff.next && !eff.nextIsBest && effOptionKey(o) === effOptionKey(eff.next)) c0.appendChild(mk("span", "eff-next-badge", "next run"));
       tr.insertCell().textContent = o.F.toFixed(2);
       const ct = tr.insertCell(); ct.textContent = o.tR.toFixed(1); if (!o.tROk) ct.className = "eff-badval";
       const cb = tr.insertCell(); cb.textContent = o.BP === null ? "?" : String(Math.round(o.BP)); if (o.bpOk === false) cb.className = "eff-badval";

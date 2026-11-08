@@ -304,8 +304,20 @@ function recommendEfficiency(ref, specs, trClass, rClass, userColumns) {
     out.reachesSpec = !!best;
     if (!best && inSpec.length) best = inSpec.slice().sort(function (a, b) { return b.pred.Rs - a.pred.Rs; })[0];
     out.best = best ? decorate(ref, best, specs) : null;
+    // Next run: the smallest step the flow chart's action allows (only the levers the table names,
+    // fewest changes first), preferring one that meets all three specs.
+    const nextList = runnable.filter(function (e) { return e.matchesCase; }).sort(function (a, b) {
+        if (a.meetsAll !== b.meetsAll) return a.meetsAll ? -1 : 1;
+        if (a.levers.length !== b.levers.length) return a.levers.length - b.levers.length;
+        if (!!a.col.current !== !!b.col.current) return a.col.current ? -1 : 1;
+        if (a.col.inLab !== b.col.inLab) return a.col.inLab ? -1 : 1;
+        return b.pred.Rs - a.pred.Rs;
+    });
+    const next = nextList[0] || null;
+    out.next = next ? (next === best ? out.best : decorate(ref, next, specs)) : null;
+    out.nextIsBest = !!next && next === best;
     out.inCase = [];
-    out.others = runnable.filter(function (e) { return e !== best; }).map(function (e) { return decorate(ref, e, specs); });
+    out.others = runnable.filter(function (e) { return e !== best; }).map(function (e) { return e === next ? out.next : decorate(ref, e, specs); });
     // Case 1 (Rs below the floor): when no column and flow put all three in spec, the run goes to selectivity.
     if (key === "<<|<<" && !out.reachesSpec) out.selectivity = true;
     return out;
@@ -339,8 +351,10 @@ function efficiencyActionText(eff, ref) {
     }
     const table = eff.tableAction.replace(/\.$/, "");
     if (!b) return table + ".";
-    const what = b.current ? (b.F > ref.F ? "increase F to " : "decrease F to ") + b.F.toFixed(2) + " mL/min on the current column" : b.description + " at " + b.F.toFixed(2) + " mL/min";
-    return table + ". Best option: " + what + ".";
+    const words = function (o) { return o.current ? (o.F > ref.F ? "increase F to " : "decrease F to ") + o.F.toFixed(2) + " mL/min on the current column" : o.description + " at " + o.F.toFixed(2) + " mL/min"; };
+    const n = eff.next;
+    if (!n || eff.nextIsBest) return table + ". Next run (also the most optimal): " + words(b) + ".";
+    return table + ". Next run: " + words(n) + ". Most optimal: " + words(b) + ".";
 }
 
 function predictionText(p) {

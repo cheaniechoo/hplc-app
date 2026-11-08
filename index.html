@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>HPLC method development assistant</title>
-  <link rel="stylesheet" href="style.css?v=20261108-1900">
+  <link rel="stylesheet" href="style.css?v=20261108-1945">
 </head>
 <body>
 
@@ -34,7 +34,6 @@
     <div class="nav-group" data-group="history"><button id="tab-history" class="tab-button" type="button" aria-controls="panel-history" aria-selected="false">Isocratic run history</button></div>
     <div class="nav-group" data-group="gradient"><button id="tab-gradient" class="tab-button" type="button" aria-controls="panel-gradient" aria-selected="false">Gradient dashboard</button></div>
     <div class="nav-group" data-group="ghistory"><button id="tab-ghistory" class="tab-button" type="button" aria-controls="panel-ghistory" aria-selected="false">Gradient run history</button></div>
-    <div class="nav-group" data-group="gadvanced"><button id="tab-gadvanced" class="tab-button" type="button" aria-controls="panel-gadvanced" aria-selected="false">Gradient advanced settings</button></div>
     <div class="nav-group" data-group="equipment"><button id="tab-equipment" class="tab-button" type="button" aria-controls="panel-equipment" aria-selected="false">Equipment</button></div>
     <div class="nav-group" data-group="naming"><button id="tab-naming" class="tab-button" type="button" aria-controls="panel-naming" aria-selected="false">Naming guide</button></div>
   </nav>
@@ -99,7 +98,9 @@
     <section data-sub-panel="spec" aria-labelledby="specs-heading">
       <h2 id="specs-heading">Specification</h2>
       <p class="hint">These numbers come from your method's requirements, not from the file. Set them once.</p>
-      <div class="specs-grid">
+      <div class="spec-block spec-targets">
+        <div class="spec-block-head"><span class="spec-icon target" aria-hidden="true">&#9678;</span><h3>Method targets</h3><span class="spec-pill req">What the method must achieve</span></div>
+        <div class="specs-grid wide">
         <div class="field">
           <label for="spec-peaks">Target number of peaks</label>
           <input id="spec-peaks" type="number" min="1" step="1" value="7">
@@ -113,6 +114,31 @@
           <input id="spec-rs" type="number" min="0" step="0.1" value="1.4">
         </div>
         <div class="field">
+          <label for="spec-max-pressure">Max system pressure (psi)</label>
+          <input id="spec-max-pressure" type="number" min="0" step="1" value="4000">
+        </div>
+        </div>
+      </div>
+      <div class="spec-block spec-noise">
+        <div class="spec-block-head"><span class="spec-icon noise" aria-hidden="true">&#8767;</span><h3>Peak clean-up and solvent mix</h3></div>
+        <div class="specs-grid wide">
+        <div class="field">
+          <label for="spec-min-height">Ignore peaks lower than (height)</label>
+          <input id="spec-min-height" type="number" min="0" step="1000" value="10000">
+          <p class="hint">Integration blips under this height are removed and not counted, as LabSolutions does (<strong>10,000</strong>); you are told which ones. <strong>0</strong> keeps every peak.</p>
+          <p class="spec-callout">Still more peaks than the target after clean-up &rarr; <strong>INVESTIGATE</strong></p>
+        </div>
+        <div class="field">
+          <label for="spec-mix-acn"><span class="case-tag">MIX</span> ACN share of the organic part (%)</label>
+          <input id="spec-mix-acn" type="number" min="0" max="100" step="5" value="50">
+          <p class="hint">ACN:MeOH proportion of the mixed solvent (MIX), 50 = 50:50 (default when the run name gives only one number). Used to find the mix %B isoeluotropic with the ACN and MeOH runs.</p>
+        </div>
+        </div>
+      </div>
+      <details class="spec-block spec-adv">
+        <summary><span class="spec-icon adv" aria-hidden="true">&#9881;</span><span class="spec-adv-title">Advanced settings</span><span class="spec-pill">Optional &middot; worked out from your runs</span></summary>
+        <div class="specs-grid wide">
+        <div class="field">
           <label for="spec-rs-floor">Rs floor fallback</label>
           <input id="spec-rs-floor" type="number" min="0" step="0.1" value="1.0">
           <p class="hint">The Rs floor is calculated for each 7-peak run from the tR, back-pressure and Rs specs (Awesome Calculator). This value is only used if a file lacks what that calculation needs.</p>
@@ -122,22 +148,9 @@
           <input id="spec-min-percent-b" type="number" min="0" max="100" step="0.1" placeholder="leave blank to let the tool derive it">
           <p class="hint">Leave blank to let the tool derive this from the log K fit across your runs.</p>
         </div>
-        <div class="field">
-          <label for="spec-max-pressure">Max system pressure (psi)</label>
-          <input id="spec-max-pressure" type="number" min="0" step="1" value="4000">
         </div>
-        <div class="field">
-          <label for="spec-mix-acn">Mixed solvent: ACN share of the organic part (%)</label>
-          <input id="spec-mix-acn" type="number" min="0" max="100" step="5" value="50">
-          <p class="hint">ACN:MeOH proportion of the mixed solvent (MIX), 50 = 50:50 (default when the run name gives only one number). Used to find the mix %B isoeluotropic with the ACN and MeOH runs.</p>
-        </div>
-        <div class="field">
-          <label for="spec-min-height">Ignore peaks lower than (height)</label>
-          <input id="spec-min-height" type="number" min="0" step="1000" value="10000">
-          <p class="hint">Integration blips under this height are removed and not counted as peaks, as LabSolutions does (10,000); you are told which ones. Set 0 to keep every peak. If there are still more peaks than the target, the run is flagged INVESTIGATE.</p>
-        </div>
-      </div>
-      <h3 class="cols-heading">Your columns</h3>
+      </details>
+      <div class="spec-block-head cols-head"><span class="spec-icon cols" aria-hidden="true">&#9638;</span><h3 class="cols-heading">Your columns</h3></div>
       <p class="hint">Efficiency recommendations only use columns ticked here, with the same ligand as the run. It starts as the Monash column list (in the lab). Untick the ones you don't have and add any you could order; a column in the lab is preferred when two options both meet the specs. A Raptor (core-shell) column in the list switches the Rs floor to the SPP floor.</p>
       <div id="columns-container"></div>
     </section>
@@ -229,14 +242,57 @@
     <section data-gsub-panel="spec" aria-labelledby="g-spec-heading">
       <h2 id="g-spec-heading">Gradient specification</h2>
       <p class="hint">Separate from the isocratic specification. Changing a value decides every gradient run again.</p>
-      <div class="specs-grid">
-        <div class="field"><label for="g-spec-peaks">Target number of peaks</label><input id="g-spec-peaks" type="number" min="1" step="1" value="7"></div>
-        <div class="field"><label for="g-spec-rs">Resolution (Rs) spec</label><input id="g-spec-rs" type="number" min="0" step="0.1" value="1.4"></div>
-        <div class="field"><label for="g-spec-runtime">Run-time spec: tR last peak (min)</label><input id="g-spec-runtime" type="number" min="0" step="0.5" value="15"></div>
-        <div class="field"><label for="g-spec-pressure">Max system pressure (psi)</label><input id="g-spec-pressure" type="number" min="0" step="1" value="4000"></div>
-        <div class="field"><label for="g-spec-min-height">Ignore peaks lower than (height)</label><input id="g-spec-min-height" type="number" min="0" step="1000" value="10000"><p class="hint">Blips under this height are removed and not counted, as LabSolutions does (10,000); you are told which ones. 0 keeps every peak. Still too many peaks: INVESTIGATE.</p></div>
+      <div class="spec-block spec-targets">
+        <div class="spec-block-head"><span class="spec-icon target" aria-hidden="true">&#9678;</span><h3>Method targets</h3><span class="spec-pill req">What the method must achieve</span></div>
+        <div class="specs-grid wide">
+          <div class="field"><label for="g-spec-peaks">Target number of peaks</label><input id="g-spec-peaks" type="number" min="1" step="1" value="7"></div>
+          <div class="field"><label for="g-spec-rs">Resolution (Rs) spec</label><input id="g-spec-rs" type="number" min="0" step="0.1" value="1.4"></div>
+          <div class="field"><label for="g-spec-runtime">Run-time spec: tR last peak (min)</label><input id="g-spec-runtime" type="number" min="0" step="0.5" value="15"></div>
+          <div class="field"><label for="g-spec-pressure">Max system pressure (psi)</label><input id="g-spec-pressure" type="number" min="0" step="1" value="4000"></div>
+        </div>
       </div>
-      <p class="hint g-adv-link">The rule factors (G1, G2, G3 factors, hold, temperature steps, dwell volume, scouting gradient) are on the <a href="#" id="g-open-advanced">Gradient advanced settings</a> tab. Their defaults match the case table, so you don't need to change them.</p>
+      <div class="spec-block spec-noise">
+        <div class="spec-block-head"><span class="spec-icon noise" aria-hidden="true">&#8767;</span><h3>Peak clean-up</h3></div>
+        <div class="specs-grid wide">
+          <div class="field"><label for="g-spec-min-height">Ignore peaks lower than (height)</label><input id="g-spec-min-height" type="number" min="0" step="1000" value="10000"><p class="hint">Blips under this height are removed and not counted, as LabSolutions does (<strong>10,000</strong>); you are told which ones. <strong>0</strong> keeps every peak.</p><p class="spec-callout">Still more peaks than the target after clean-up &rarr; <strong>INVESTIGATE</strong></p></div>
+        </div>
+      </div>
+      <details class="spec-block spec-adv" id="g-adv">
+        <summary><span class="spec-icon adv" aria-hidden="true">&#9881;</span><span class="spec-adv-title">Advanced settings</span><span class="spec-pill">Optional &middot; defaults match the case table</span></summary>
+        <p class="hint">You don't need to change anything here to get the answer key. Change a value and every gradient run is decided again; your values are kept in this browser.</p>
+        <div class="adv-group adv-rules">
+          <h4>Rule factors</h4>
+          <div class="specs-grid wide">
+          <div class="field"><label for="g-adv-hold"><span class="case-tag">All</span> Isocratic hold at the start (min)</label><input id="g-adv-hold" type="number" min="0" step="0.5" value="2"></div>
+          <div class="field"><label for="g-adv-tgmax"><span class="case-tag">G2</span> tG limit for G2 (min)</label><input id="g-adv-tgmax" type="number" min="1" step="1" value="60"></div>
+          <div class="field"><label for="g-adv-g1up"><span class="case-tag up">G1 &uarr;</span> G1 &uarr; tG factor</label><input id="g-adv-g1up" type="number" min="0.1" step="0.05" value="0.5"></div>
+          <div class="field"><label for="g-adv-g1down"><span class="case-tag down">G1 &darr;</span> G1 &darr; tG factor (from scouting)</label><input id="g-adv-g1down" type="number" min="1" step="0.05" value="1.2"></div>
+          <div class="field"><label for="g-adv-g2"><span class="case-tag">G2</span> G2 F factor (tG divided by it)</label><input id="g-adv-g2" type="number" min="0.1" step="0.05" value="0.8"></div>
+          <div class="field"><label for="g-adv-shrink-start"><span class="case-tag">G3</span> G3 margin before the first peak (%B)</label><input id="g-adv-shrink-start" type="number" min="0" step="1" value="20"></div>
+          <div class="field"><label for="g-adv-shrink-end"><span class="case-tag">G3</span> G3 margin after the last peak (%B)</label><input id="g-adv-shrink-end" type="number" min="0" step="1" value="5"></div>
+          <div class="field"><label class="g-check"><input id="g-adv-marker" type="checkbox" checked> The first peak is uracil (t0 marker), so G3 uses the second peak as the first compound</label></div>
+          </div>
+        </div>
+        <div class="adv-group adv-ladder">
+          <h4>Selectivity ladder (G1 &#x2715;)</h4>
+          <p class="hint">After G1 &uarr; and G1 &darr; fail: temperature through these steps (ambient first), then solvent (MeOH, then MIX), then ligand, each from a new scouting gradient.</p>
+          <div class="specs-grid wide">
+          <div class="field"><label for="g-adv-tsteps">Temperature steps (&deg;C, comma separated)</label><input id="g-adv-tsteps" type="text" value="40, 60"></div>
+        <div class="field"><label for="g-adv-tmax">Maximum oven temperature (&deg;C)</label><input id="g-adv-tmax" type="number" min="25" step="5" value="60"></div>
+          </div>
+        </div>
+        <div class="adv-group adv-instr">
+          <h4>Instrument and scouting gradient</h4>
+          <div class="specs-grid wide">
+          <div class="field"><label for="g-adv-dwell">Dwell volume (mL)</label><input id="g-adv-dwell" type="number" min="0" step="0.1" value="0"><p class="hint">Delay between the mixer and the column (dwell time = volume &divide; F), added to the hold when working out %B at elution. 0 = the workshop's calculation.</p></div>
+        <div class="field"><label for="g-adv-sc-bini">Scouting %B ini</label><input id="g-adv-sc-bini" type="number" min="0" max="100" step="1" value="5"></div>
+        <div class="field"><label for="g-adv-sc-bfin">Scouting %B fin</label><input id="g-adv-sc-bfin" type="number" min="0" max="100" step="1" value="100"></div>
+        <div class="field"><label for="g-adv-sc-tg">Scouting tG (min)</label><input id="g-adv-sc-tg" type="number" min="1" step="1" value="20"></div>
+        <div class="field"><label for="g-adv-sc-f">Scouting flow (mL/min)</label><input id="g-adv-sc-f" type="number" min="0.1" step="0.1" value="1.5"></div>
+          </div>
+        </div>
+        <p class="adv-actions"><button type="button" id="g-adv-reset" class="secondary">Reset to the case-table values</button> <span id="g-adv-status" class="adv-status" role="status"></span></p>
+      </details>
     </section>
 
     <section data-gsub-panel="upload" aria-labelledby="g-upload-heading">
@@ -303,38 +359,6 @@
     </section>
   </main>
 
-  <main id="panel-gadvanced" class="tab-panel" role="tabpanel" aria-labelledby="tab-gadvanced" hidden>
-    <section aria-labelledby="g-adv-heading">
-      <h2 id="g-adv-heading">Gradient advanced settings</h2>
-      <p class="hint">Optional. Every value is set to the gradient case table, so the tool gives the answer key without touching anything here. Change a value and every gradient run is decided again. Your values are kept in this browser.</p>
-      <h3>Rule factors</h3>
-<div class="specs-grid">
-          <div class="field"><label for="g-adv-hold">Isocratic hold at the start (min)</label><input id="g-adv-hold" type="number" min="0" step="0.5" value="2"></div>
-          <div class="field"><label for="g-adv-tgmax">tG limit for G2 (min)</label><input id="g-adv-tgmax" type="number" min="1" step="1" value="60"></div>
-          <div class="field"><label for="g-adv-g1up">G1 &uarr; tG factor</label><input id="g-adv-g1up" type="number" min="0.1" step="0.05" value="0.5"></div>
-          <div class="field"><label for="g-adv-g1down">G1 &darr; tG factor (from scouting)</label><input id="g-adv-g1down" type="number" min="1" step="0.05" value="1.2"></div>
-          <div class="field"><label for="g-adv-g2">G2 F factor (tG divided by it)</label><input id="g-adv-g2" type="number" min="0.1" step="0.05" value="0.8"></div>
-          <div class="field"><label for="g-adv-shrink-start">G3 margin before the first peak (%B)</label><input id="g-adv-shrink-start" type="number" min="0" step="1" value="20"></div>
-          <div class="field"><label for="g-adv-shrink-end">G3 margin after the last peak (%B)</label><input id="g-adv-shrink-end" type="number" min="0" step="1" value="5"></div>
-          <div class="field"><label class="g-check"><input id="g-adv-marker" type="checkbox" checked> The first peak is uracil (t0 marker), so G3 uses the second peak as the first compound</label></div>
-        </div>
-      <h3>Selectivity ladder (G1 &#x2715;)</h3>
-      <p class="hint">After G1 &uarr; and G1 &darr; fail, the tool changes temperature through these steps (ambient first), then the solvent (MeOH, then MIX), then the ligand, and repeats the whole set of cases from a scouting gradient for each new condition.</p>
-      <div class="specs-grid">
-        <div class="field"><label for="g-adv-tsteps">Temperature steps (&deg;C, comma separated)</label><input id="g-adv-tsteps" type="text" value="40, 60"></div>
-        <div class="field"><label for="g-adv-tmax">Maximum oven temperature (&deg;C)</label><input id="g-adv-tmax" type="number" min="25" step="5" value="60"></div>
-      </div>
-      <h3>Instrument and scouting gradient</h3>
-      <div class="specs-grid">
-        <div class="field"><label for="g-adv-dwell">Dwell volume (mL)</label><input id="g-adv-dwell" type="number" min="0" step="0.1" value="0"><p class="hint">Delay between the mixer and the column (dwell time = volume &divide; F), added to the hold when working out %B at elution. 0 = the workshop's calculation.</p></div>
-        <div class="field"><label for="g-adv-sc-bini">Scouting %B ini</label><input id="g-adv-sc-bini" type="number" min="0" max="100" step="1" value="5"></div>
-        <div class="field"><label for="g-adv-sc-bfin">Scouting %B fin</label><input id="g-adv-sc-bfin" type="number" min="0" max="100" step="1" value="100"></div>
-        <div class="field"><label for="g-adv-sc-tg">Scouting tG (min)</label><input id="g-adv-sc-tg" type="number" min="1" step="1" value="20"></div>
-        <div class="field"><label for="g-adv-sc-f">Scouting flow (mL/min)</label><input id="g-adv-sc-f" type="number" min="0.1" step="0.1" value="1.5"></div>
-      </div>
-      <p><button type="button" id="g-adv-reset" class="secondary">Reset to the case-table values</button> <span id="g-adv-status" class="hint" role="status"></span></p>
-    </section>
-  </main>
 
   <main id="panel-equipment" class="tab-panel" role="tabpanel" aria-labelledby="tab-equipment" hidden>
     <nav class="sub-bar" aria-label="Equipment steps"><button type="button" class="eq-sub-button" data-eq-sub="instrument">1  Instrument</button><button type="button" class="eq-sub-button" data-eq-sub="params">2  Parameters</button><button type="button" class="eq-sub-button" data-eq-sub="responses">3  Responses</button><button type="button" class="eq-sub-button" data-eq-sub="build">4  Build a column</button><button type="button" class="eq-sub-button" data-eq-sub="nomogram">5  Solvent nomogram</button></nav>
@@ -550,21 +574,21 @@
     </section>
   </main>
 
-  <script src="equipment-data.js?v=20261108-1900"></script>
-  <script src="efficiency.js?v=20261108-1900"></script>
-  <script src="logic.js?v=20261108-1900"></script>
-  <script src="monash-columns.js?v=20261108-1900"></script>
-  <script src="user-columns.js?v=20261108-1900"></script>
-  <script src="module-howto.js?v=20261108-1900"></script>
-  <script src="chromatogram.js?v=20261108-1900"></script>
-  <script src="logk-chart.js?v=20261108-1900"></script>
-  <script src="gradient.js?v=20261108-1900"></script>
-  <script src="app.js?v=20261108-1900"></script>
-  <script src="gradient-app.js?v=20261108-1900"></script>
-  <script src="guide-figures.js?v=20261108-1900"></script>
-  <script src="flowchart.js?v=20261108-1900"></script>
-  <script src="ligand-structures.js?v=20261108-1900"></script>
-  <script src="equipment-interactive.js?v=20261108-1900"></script>
-  <script src="nav.js?v=20261108-1900"></script>
+  <script src="equipment-data.js?v=20261108-1945"></script>
+  <script src="efficiency.js?v=20261108-1945"></script>
+  <script src="logic.js?v=20261108-1945"></script>
+  <script src="monash-columns.js?v=20261108-1945"></script>
+  <script src="user-columns.js?v=20261108-1945"></script>
+  <script src="module-howto.js?v=20261108-1945"></script>
+  <script src="chromatogram.js?v=20261108-1945"></script>
+  <script src="logk-chart.js?v=20261108-1945"></script>
+  <script src="gradient.js?v=20261108-1945"></script>
+  <script src="app.js?v=20261108-1945"></script>
+  <script src="gradient-app.js?v=20261108-1945"></script>
+  <script src="guide-figures.js?v=20261108-1945"></script>
+  <script src="flowchart.js?v=20261108-1945"></script>
+  <script src="ligand-structures.js?v=20261108-1945"></script>
+  <script src="equipment-interactive.js?v=20261108-1945"></script>
+  <script src="nav.js?v=20261108-1945"></script>
 </body>
 </html>
