@@ -24,9 +24,12 @@
     ["hold", "g-adv-hold"], ["tGMax", "g-adv-tgmax"], ["g1UpFactor", "g-adv-g1up"], ["g1DownFactor", "g-adv-g1down"], ["g2Factor", "g-adv-g2"],
     ["shrinkStartMargin", "g-adv-shrink-start"], ["shrinkEndMargin", "g-adv-shrink-end"],
     ["maxOvenTemp", "g-adv-tmax"], ["dwellVolume", "g-adv-dwell"],
+    ["wastedThreshold", "g-adv-wasted"], ["g3RsMargin", "g-adv-g3margin"], ["mixAcnShare", "g-adv-mix"], ["vmPorosity", "g-adv-porosity"],
   ];
   const SCOUT_FIELDS = [["bIni", "g-adv-sc-bini"], ["bFin", "g-adv-sc-bfin"], ["tG", "g-adv-sc-tg"], ["F", "g-adv-sc-f"]];
-  const TEXT_FIELDS = ["g-adv-tsteps"];
+  const TEXT_FIELDS = ["g-adv-tsteps", "g-adv-solvents", "g-adv-ligands", "g-adv-vmsource"];
+  const listOf = function (id) { const el = $(id); return el ? el.value.split(/[,;]+/).map(function (x) { return x.trim(); }).filter(Boolean) : []; };
+  const normSolv = function (x) { const u = x.toUpperCase(); return u === "MEOH" || u === "MOH" ? "MeOH" : u === "ACN" ? "ACN" : u === "MIX" ? "MIX" : null; };
   function readSpecs() {
     const s = {};
     SPEC_FIELDS.forEach(function (f) { const el = $(f[1]); const v = el ? Number(el.value) : NaN; if (Number.isFinite(v)) s[f[0]] = v; });
@@ -37,6 +40,10 @@
     const ts = $("g-adv-tsteps");
     const steps = ts ? ts.value.split(/[,;\s]+/).map(Number).filter(function (v) { return Number.isFinite(v) && v > 25; }) : [];
     s.tempSteps = steps.length ? steps.sort(function (a, b) { return a - b; }) : [40, 60];
+    const solv = listOf("g-adv-solvents").map(normSolv).filter(Boolean);
+    s.solventOrder = solv.length ? solv : ["ACN", "MeOH", "MIX"];
+    s.ligandOrder = listOf("g-adv-ligands");
+    const vs = $("g-adv-vmsource"); s.vmSource = vs && vs.value === "measured" ? "measured" : "geometry";
     return s;
   }
   function saveSpecs() {
@@ -56,7 +63,7 @@
   }
   function resetSpecs() {
     SPEC_FIELDS.concat(SCOUT_FIELDS).forEach(function (f) { const el = $(f[1]); if (el) el.value = el.defaultValue; });
-    TEXT_FIELDS.forEach(function (id) { const el = $(id); if (el) el.value = el.defaultValue; });
+    TEXT_FIELDS.forEach(function (id) { const el = $(id); if (!el) return; if (el.tagName === "SELECT") el.value = defaultOf(el); else el.value = el.defaultValue; });
     const marker = $("g-adv-marker"); if (marker) marker.checked = true;
     try { localStorage.removeItem(SPEC_KEY); } catch (err) { /* ignore */ }
   }
@@ -188,7 +195,7 @@
       const inp = mk("input"); inp.type = "text"; inp.value = rec[f[1]] === null || rec[f[1]] === undefined ? "" : rec[f[1]]; inp.dataset.gfield = f[1];
       tr.insertCell().appendChild(inp);
     });
-    const vm = G.Vm(rec.columnDimensions);
+    const vm = G.VmFor ? G.VmFor(rec, readSpecs()) : G.Vm(rec.columnDimensions);
     const gs = G.GS(rec.bIni, rec.bFin, rec.tG, rec.F, vm);
     const info = mk("p", "hint", "Vm = π × (ID/2)² × L × 0.68 = " + (vm ? vm.toFixed(3) + " mL" : "?") + ".  GS = Δφ × Vm ÷ (tG × F) = " + (gs !== null ? gs.toFixed(4) : "?") + ".");
     const btn = mk("button", null, "Save conditions and decide again"); btn.type = "button";
@@ -584,6 +591,7 @@
   }
 
   function renderAll() {
+    try { liveGS(); } catch (err) { /* settings box not on the page */ }
     const h = readHistory();
     let rec = h.find(function (r) { return r.fileName === currentFile; }) || null;
     if (!rec && h.length) { const s = G.sort(h); rec = s[s.length - 1]; currentFile = rec.fileName; }
@@ -606,18 +614,165 @@
   // ---------- wiring ----------
   const input = $("g-file");
   if (input) input.addEventListener("change", function (e) { handleFiles(e.target.files).then(function () { e.target.value = ""; }); });
+  // ---------- advanced settings: highlights, impact, validation, live GS, save/load ----------
+  const ADV_IDS = SPEC_FIELDS.slice(5).map(function (f) { return f[1]; }).concat(SCOUT_FIELDS.map(function (f) { return f[1]; }), TEXT_FIELDS, ["g-adv-marker"]);
+  function defaultOf(el) {
+    if (el.type === "checkbox") return el.defaultChecked;
+    if (el.tagName === "SELECT") { const o = Array.from(el.options).find(function (x) { return x.defaultSelected; }) || el.options[0]; return o ? o.value : ""; }
+    return el.defaultValue;
+  }
+  function valueOf(el) { return el.type === "checkbox" ? el.checked : el.value; }
+  function sameValue(a, b) {
+    if (typeof a === "boolean") return a === b;
+    const na = Number(a), nb = Number(b);
+    if (String(a).trim() !== "" && String(b).trim() !== "" && Number.isFinite(na) && Number.isFinite(nb)) return na === nb;
+    return String(a).replace(/\s+/g, "").toLowerCase() === String(b).replace(/\s+/g, "").toLowerCase();
+  }
+  function markChanged() {
+    let n = 0;
+    ADV_IDS.forEach(function (id) {
+      const el = $(id); if (!el) return;
+      const field = el.closest(".field"); if (!field) return;
+      const d = defaultOf(el), changed = !sameValue(valueOf(el), d);
+      field.classList.toggle("adv-changed", changed);
+      let tag = field.querySelector(".adv-default");
+      if (changed) {
+        n++;
+        if (!tag) { tag = mk("span", "adv-default"); field.appendChild(tag); }
+        const shown = el.type === "checkbox" ? (d ? "ticked" : "not ticked") : el.tagName === "SELECT" ? (Array.from(el.options).find(function (o) { return o.value === d; }) || {}).textContent : (d === "" ? "blank" : d);
+        tag.textContent = "Case table: " + shown;
+      } else if (tag) tag.remove();
+    });
+    const pill = $("g-adv-changed-pill");
+    if (pill) { pill.hidden = n === 0; pill.textContent = n + " changed"; }
+  }
+  function validate() {
+    const s = readSpecs(), w = [];
+    const sc = s.scouting;
+    if (!(sc.bFin > sc.bIni)) w.push("Scouting %B fin (" + sc.bFin + ") must be higher than %B ini (" + sc.bIni + ").");
+    if (sc.bIni < 0 || sc.bFin > 100) w.push("Scouting %B must stay between 0 and 100.");
+    if (!(s.g1UpFactor > 0 && s.g1UpFactor < 1)) w.push("The G1 ↑ tG factor must be between 0 and 1: a shorter tG is what raises GS.");
+    if (!(s.g1DownFactor > 1)) w.push("The G1 ↓ tG factor must be above 1: a longer tG is what lowers GS.");
+    if (!(s.g2Factor > 0 && s.g2Factor < 1)) w.push("The G2 F factor must be between 0 and 1 (lower F, longer tG, same GS).");
+    if (!(s.tGMax > sc.tG)) w.push("The G2 tG limit (" + s.tGMax + " min) should be longer than the scouting tG (" + sc.tG + " min).");
+    const hot = (s.tempSteps || []).filter(function (t) { return t > s.maxOvenTemp; });
+    if (hot.length) w.push("Temperature step" + (hot.length > 1 ? "s " : " ") + hot.join(", ") + " °C " + (hot.length > 1 ? "are" : "is") + " above the oven maximum (" + s.maxOvenTemp + " °C) and will be skipped.");
+    const ts = $("g-adv-tsteps"); if (ts && ts.value.trim() && ts.value.split(/[,;\s]+/).filter(Boolean).some(function (x) { const v = Number(x); return !Number.isFinite(v) || v <= 25; })) w.push("Temperature steps must be numbers above 25 °C (ambient is always first).");
+    const badSolv = listOf("g-adv-solvents").filter(function (x) { return !normSolv(x); });
+    if (badSolv.length) w.push("Unknown solvent" + (badSolv.length > 1 ? "s" : "") + ": " + badSolv.join(", ") + ". Use ACN, MeOH or MIX.");
+    if (s.mixAcnShare < 0 || s.mixAcnShare > 100) w.push("The MIX ACN share must be between 0 and 100 %.");
+    if (s.vmPorosity < 0.3 || s.vmPorosity > 0.95) w.push("Porosity is usually 0.5–0.8 (0.68 in the workshop).");
+    if (s.dwellVolume < 0 || s.hold < 0 || s.shrinkStartMargin < 0 || s.shrinkEndMargin < 0 || s.wastedThreshold < 0 || s.g3RsMargin < 0) w.push("Hold, dwell volume, margins and thresholds can't be negative.");
+    const box = $("g-adv-warn");
+    if (box) { box.hidden = !w.length; box.replaceChildren(); if (w.length) { box.appendChild(mk("strong", null, "Check these values")); const ul = mk("ul"); w.forEach(function (t) { ul.appendChild(mk("li", null, t)); }); box.appendChild(ul); } }
+    return w;
+  }
+  function liveGS() {
+    const box = $("g-adv-gs"); if (!box) return;
+    const s = readSpecs(), sc = s.scouting;
+    const rec = readHistory().filter(function (r) { return r.fileName === currentFile; })[0] || readHistory()[0];
+    const dims = rec && rec.columnDimensions ? rec.columnDimensions : "150x4.6x5";
+    const vm = s.vmSource === "measured" && rec ? G.VmFor(rec, s) : G.Vm(dims, s.vmPorosity);
+    const gs = function (tG) { return G.GS(sc.bIni, sc.bFin, tG, sc.F, vm); };
+    box.replaceChildren();
+    if (!vm) return;
+    const cell = function (label, v, hint) { const d = mk("div", "adv-gs-cell"); d.appendChild(mk("span", null, label)); d.appendChild(mk("strong", null, typeof v === "number" ? (label === "Vm used" ? v.toFixed(3) + " mL" : v.toFixed(4)) : "–")); if (hint) d.appendChild(mk("small", null, hint)); return d; };
+    box.appendChild(cell("Scouting GS", gs(sc.tG), sc.bIni + "–" + sc.bFin + " %B, " + sc.tG + " min, " + sc.F + " mL/min"));
+    box.appendChild(cell("After G1 ↑", gs(sc.tG * s.g1UpFactor), "tG " + (sc.tG * s.g1UpFactor).toFixed(1) + " min (steeper)"));
+    box.appendChild(cell("After G1 ↓", gs(sc.tG * s.g1DownFactor), "tG " + (sc.tG * s.g1DownFactor).toFixed(1) + " min (shallower)"));
+    box.appendChild(cell("Vm used", vm, (s.vmSource === "measured" && rec ? "F × t0 of " : "column ") + (rec ? (rec.runNumber ? "R" + String(rec.runNumber).padStart(2, "0") + " " : "") : "") + dims.replace(/x/g, " × ") + (s.vmSource === "measured" ? "" : ", porosity " + s.vmPorosity)));
+  }
+  function ligandChips() {
+    const box = $("g-adv-ligand-chips"), inp = $("g-adv-ligands"); if (!box || !inp) return;
+    let ligs = [];
+    try { ligs = Array.from(new Set((window.userColumns ? window.userColumns.read() : []).map(function (c) { return c.ligand; }))); } catch (err) { ligs = []; }
+    if (!ligs.length && window.monashColumns) ligs = window.monashColumns.ligands.slice();
+    box.replaceChildren();
+    box.appendChild(mk("span", "adv-chips-label", "From your column list:"));
+    const chosen = listOf("g-adv-ligands").map(function (x) { return x.toLowerCase(); });
+    ligs.forEach(function (l) {
+      const on = chosen.indexOf(l.toLowerCase()) !== -1;
+      const b = mk("button", "adv-chip" + (on ? " on" : ""), (on ? "✓ " : "+ ") + l);
+      b.type = "button";
+      b.addEventListener("click", function () {
+        const cur = listOf("g-adv-ligands");
+        const i = cur.map(function (x) { return x.toLowerCase(); }).indexOf(l.toLowerCase());
+        if (i === -1) cur.push(l); else cur.splice(i, 1);
+        inp.value = cur.join(", ");
+        inp.dispatchEvent(new Event("change"));
+      });
+      box.appendChild(b);
+    });
+  }
+  function snapshot() { const m = {}; readHistory().forEach(function (r) { m[r.fileName] = { label: r.decision ? (r.decision.caseLabel || r.decision.stage || "") : "", action: r.decision ? r.decision.action : "", run: r.runNumber }; }); return m; }
+  function showImpact(before, after, note) {
+    const box = $("g-adv-impact"); if (!box) return;
+    const changed = Object.keys(after).filter(function (k) { return before[k] && (before[k].label !== after[k].label || before[k].action !== after[k].action); });
+    box.hidden = false; box.replaceChildren();
+    const total = Object.keys(after).length;
+    if (!total) { box.appendChild(mk("span", null, (note ? note + " " : "") + "No gradient runs loaded yet, so no decisions changed.")); return; }
+    if (!changed.length) { box.className = "adv-impact same"; box.appendChild(mk("span", null, (note ? note + " " : "") + "All " + total + " gradient run" + (total === 1 ? "" : "s") + " decided again: no decision changed.")); return; }
+    box.className = "adv-impact diff";
+    box.appendChild(mk("strong", null, (note ? note + " " : "") + changed.length + " of " + total + " run" + (total === 1 ? "" : "s") + " now get a different decision:"));
+    const ul = mk("ul");
+    changed.forEach(function (k) {
+      const li = mk("li");
+      const n = String(after[k].run || "").replace(/^0+(?=\d)/, "");
+      li.appendChild(mk("b", null, n ? "R" + n.padStart(2, "0") + " " : k + " "));
+      li.appendChild(mk("span", "adv-was", before[k].label || "–"));
+      li.appendChild(document.createTextNode(" → "));
+      li.appendChild(mk("span", "adv-now", after[k].label || "–"));
+      if (before[k].label === after[k].label) li.appendChild(mk("small", null, " (new conditions: " + (after[k].action || "").slice(0, 90) + ")"));
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+  }
+  function applyAdvanced(note) {
+    const before = snapshot();
+    validate();
+    saveSpecs(); decideAll(); renderAll();
+    markChanged(); liveGS(); ligandChips();
+    showImpact(before, snapshot(), note);
+    const st = $("g-adv-status"); if (st) st.textContent = "Saved.";
+  }
   SPEC_FIELDS.concat(SCOUT_FIELDS).map(function (f) { return $(f[1]); }).concat([$("g-adv-marker")], TEXT_FIELDS.map($)).forEach(function (el) {
-    if (el) el.addEventListener("change", function () { saveSpecs(); decideAll(); renderAll(); const st = $("g-adv-status"); if (st) st.textContent = "Saved. Gradient runs decided again."; });
+    if (el) el.addEventListener("change", function () { applyAdvanced(); });
   });
   const advReset = $("g-adv-reset");
   if (advReset) advReset.addEventListener("click", function () {
-    // Only the advanced factors: the four specification values on the dashboard stay.
+    // Only the advanced factors: the specification values on the dashboard stay.
     const keep = ["g-spec-peaks", "g-spec-rs", "g-spec-runtime", "g-spec-pressure", "g-spec-min-height"].map(function (id) { const el = $(id); return el ? [el, el.value] : null; }).filter(Boolean);
     resetSpecs();
     keep.forEach(function (k) { k[0].value = k[1]; });
-    saveSpecs(); decideAll(); renderAll();
-    const st = $("g-adv-status"); if (st) st.textContent = "Back to the case-table values.";
+    applyAdvanced("Back to the case-table values.");
   });
+  const exp = $("g-adv-export");
+  if (exp) exp.addEventListener("click", function () {
+    const out = { app: "HPLC flow chart – gradient advanced settings", version: 1, saved: new Date().toISOString(), settings: {} };
+    ADV_IDS.forEach(function (id) { const el = $(id); if (el) out.settings[id] = valueOf(el); });
+    const blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "gradient-settings.json";
+    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    const st = $("g-adv-status"); if (st) st.textContent = "Settings saved to gradient-settings.json.";
+  });
+  const imp = $("g-adv-import");
+  if (imp) imp.addEventListener("change", function () {
+    const f = imp.files && imp.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = function () {
+      try {
+        const data = JSON.parse(r.result);
+        const set = data && data.settings ? data.settings : null;
+        if (!set) throw new Error("this isn't a settings file from this app");
+        let n = 0;
+        ADV_IDS.forEach(function (id) { const el = $(id); if (!el || set[id] === undefined) return; if (el.type === "checkbox") el.checked = !!set[id]; else el.value = set[id]; n++; });
+        applyAdvanced("Loaded " + n + " settings from " + f.name + ".");
+      } catch (err) { const st = $("g-adv-status"); if (st) st.textContent = "Couldn't load " + f.name + ": " + err.message + "."; }
+      imp.value = "";
+    };
+    r.readAsText(f);
+  });
+  if (window.userColumns && window.userColumns.onChange) window.userColumns.onChange(ligandChips);
   const openAdv = $("g-open-advanced");
   if (openAdv) openAdv.addEventListener("click", function (e) { e.preventDefault(); const t = $("tab-gadvanced"); if (t) t.click(); });
   const again = $("g-decide-btn");
@@ -646,6 +801,7 @@
   loadSpecs();
   decideAll();
   renderAll();
+  markChanged(); ligandChips(); validate();
   showGSub("spec");
 
   window.gradientApp = { current: function () { return readHistory().find(function (r) { return r.fileName === currentFile; }) || null; }, handleFiles: handleFiles, clear: function () { clearHistory(); resetSpecs(); decideAll(); renderAll(); showGSub("spec"); }, show: showGSub };

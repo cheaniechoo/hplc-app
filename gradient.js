@@ -20,6 +20,8 @@ const GRADIENT_DEFAULTS = {
     shrinkStartMargin: 20, shrinkEndMargin: 5, wastedThreshold: 3,
     firstPeakIsMarker: true,
     tempSteps: [40, 60], maxOvenTemp: 60, dwellVolume: 0,
+    solventOrder: ["ACN", "MeOH", "MIX"], mixAcnShare: 50, ligandOrder: [],
+    vmSource: "geometry", vmPorosity: 0.68, g3RsMargin: 0,
     scouting: { bIni: 5, bFin: 100, tG: 20, F: 1.5 },
 };
 
@@ -32,10 +34,21 @@ function gNum(v) {
 }
 function gRound(x, d) { const m = Math.pow(10, d); return Math.round(x * m) / m; }
 
-function gradientVm(columnDimensions) {
+function gradientVm(columnDimensions, porosity) {
     const p = String(columnDimensions || "").split("x").map(Number);
     if (p.length !== 3 || !p.every(Number.isFinite)) return null;
-    return Math.PI * Math.pow(p[1] / 2, 2) * p[0] * 0.68 / 1000;
+    const e = Number(porosity) > 0 ? Number(porosity) : 0.68;
+    return Math.PI * Math.pow(p[1] / 2, 2) * p[0] * e / 1000;
+}
+// Vm for a run: from the column size x porosity (the workshop's way), or measured as F x t0
+// from the first peak (uracil) when the settings ask for it and the run has one.
+function gradientVmFor(run, specs) {
+    const sp = specs || GRADIENT_DEFAULTS;
+    if (sp.vmSource === "measured" && run) {
+        const t0 = Array.isArray(run.peakTimes) && run.peakTimes.length ? run.peakTimes[0] : (typeof run.t0 === "number" ? run.t0 : null);
+        if (typeof t0 === "number" && t0 > 0 && Number(run.F) > 0) return Number(run.F) * t0;
+    }
+    return gradientVm(run && run.columnDimensions, sp.vmPorosity);
 }
 
 function gradientSteepness(bIni, bFin, tG, F, Vm) {
@@ -281,13 +294,24 @@ function nextGradientSelectivity(run, history, specs) {
         const t = GRADIENT_TEMPERATURES[i];
         if (!tried.has(solv + "|" + t + "|" + lig)) return { kind: "temperature", temperature: t, solvent: solv, text: "Change the temperature to " + t + " °C" };
     }
-    for (const s of GRADIENT_SOLVENTS) {
+    const order = specs && Array.isArray(specs.solventOrder) && specs.solventOrder.length ? specs.solventOrder.map(normSolvent) : GRADIENT_SOLVENTS;
+    const mixShare = specs && Number(specs.mixAcnShare) >= 0 ? Number(specs.mixAcnShare) : 50;
+    for (const s of order) {
         if (s === solv) continue;
         if (!Array.from(tried).some(function (k) { return k.indexOf(s + "|") === 0 && k.slice(-lig.length - 1) === "|" + lig; })) {
-            return { kind: "solvent", temperature: "amb", solvent: s, text: "Change solvent B to " + s + " (back to ambient)" };
+            const label = s === "MIX" ? "MIX (" + mixShare + ":" + (100 - mixShare) + " ACN:MeOH)" : s;
+            return { kind: "solvent", temperature: "amb", solvent: s, mixAcnShare: s === "MIX" ? mixShare : undefined, text: "Change solvent B to " + label + " (back to ambient)" };
         }
     }
-    return { kind: "ligand", text: "Change the ligand (stationary phase): temperature and solvent changes have not given the target peaks on this column" };
+    // Ligand: the next one in the user's order that has not been run yet (first solvent, ambient).
+    const ligs = specs && Array.isArray(specs.ligandOrder) ? specs.ligandOrder : [];
+    const triedLigs = new Set(history.map(function (h) { return String(h.ligand || "").toLowerCase(); }));
+    for (const L of ligs) {
+        const l = String(L).toLowerCase();
+        if (!l || l === lig || triedLigs.has(l)) continue;
+        return { kind: "ligand", ligand: L, temperature: "amb", solvent: order[0], text: "Change the ligand to " + L + " (" + order[0] + ", ambient)" };
+    }
+    return { kind: "ligand", text: "Change the ligand (stationary phase): temperature and solvent changes have not given the target peaks on this column" + (ligs.length ? " and every ligand in your list has been tried" : "") };
 }
 
 // Decide the next gradient run.
@@ -298,7 +322,7 @@ function decideGradient(run, history, specsIn) {
     const specs = Object.assign({}, GRADIENT_DEFAULTS, specsIn || {});
     if (run && typeof run.hold === "number" && run.hold >= 0) specs.hold = run.hold;
     const out = { run: run };
-    const Vm = gradientVm(run.columnDimensions);
+    const Vm = gradientVmFor(run, specs);
     const missing = [];
     if (run.bIni === null || run.bFin === null) missing.push("%B ini and %B fin");
     if (run.tG === null) missing.push("tG");
@@ -320,13 +344,15 @@ function decideGradient(run, history, specsIn) {
     const upTo = ordered.slice(0, ordered.findIndex(function (h) { return h.fileName === run.fileName; }) + 1);
     const series = upTo.filter(function (h) { return chemistryKey(h) === chemistryKey(run); });
     const scout = series[0] || run;
-    const scoutVm = gradientVm(scout.columnDimensions) || Vm;
+    const scoutVm = gradientVmFor(scout, specs) || Vm;
     const GS0 = gradientSteepness(scout.bIni, scout.bFin, scout.tG, scout.F, scoutVm);
     out.reference = { fileName: scout.fileName, GS: GS0 };
 
     const next = function (bIni, bFin, tG, F, extra) {
         const n = Object.assign({ bIni: gRound(bIni, 1), bFin: gRound(bFin, 1), tG: gRound(tG, 2), F: gRound(F, 2), solvent: run.solvent, temperature: run.temperature, ligand: run.ligand, columnDimensions: run.columnDimensions }, extra || {});
-        n.GS = gradientSteepness(n.bIni, n.bFin, n.tG, n.F, gradientVm(n.columnDimensions) || Vm);
+        // Same column: same Vm (measured or not); a new column size: from its geometry.
+        const sameCol = String(n.columnDimensions || "") === String(run.columnDimensions || "");
+        n.GS = gradientSteepness(n.bIni, n.bFin, n.tG, n.F, sameCol ? Vm : (gradientVm(n.columnDimensions, specs.vmPorosity) || Vm));
         return n;
     };
 
@@ -361,10 +387,10 @@ function decideGradient(run, history, specsIn) {
         }
         const sel = nextGradientSelectivity(run, upTo, specs);
         const sc = specs.scouting;
-        const n = sel.kind === "ligand" ? null : next(sc.bIni, sc.bFin, sc.tG, sc.F, { temperature: sel.temperature, solvent: sel.solvent });
+        const n = sel.kind === "ligand" && !sel.ligand ? null : next(sc.bIni, sc.bFin, sc.tG, sc.F, { temperature: sel.temperature, solvent: sel.solvent, ligand: sel.ligand || run.ligand });
         return Object.assign(out, {
             caseId: "G1x", caseLabel: "G1 ✕", stage: "G1 ✕ Change selectivity",
-            action: sel.kind === "ligand" ? "Change the ligand, then start again with a scouting gradient." : sel.text + ", then start again with a scouting gradient: " + n.bIni + "–" + n.bFin + " %B in " + n.tG + " min at " + n.F + " mL/min.",
+            action: !n ? "Change the ligand, then start again with a scouting gradient." : sel.text + ", then start again with a scouting gradient: " + n.bIni + "–" + n.bFin + " %B in " + n.tG + " min at " + n.F + " mL/min.",
             message: "Both raising GS (G1 ↑) and lowering it (G1 ↓) left " + peaks + " of " + specs.targetPeaks + " peaks. GS alone cannot separate them, so change the chemistry. Each new condition runs the cases again from a scouting gradient (G1 ↑, G1 ↓, G2, G3, G4).",
             selectivity: sel, next: n,
         });
@@ -378,10 +404,10 @@ function decideGradient(run, history, specsIn) {
         if (atMax) {
             const sel = nextGradientSelectivity(run, upTo, specs);
             const sc = specs.scouting;
-            const n = sel.kind === "ligand" ? null : next(sc.bIni, sc.bFin, sc.tG, sc.F, { temperature: sel.temperature, solvent: sel.solvent });
+            const n = sel.kind === "ligand" && !sel.ligand ? null : next(sc.bIni, sc.bFin, sc.tG, sc.F, { temperature: sel.temperature, solvent: sel.solvent, ligand: sel.ligand || run.ligand });
             return Object.assign(out, {
                 caseId: "G2stop", caseLabel: "G2 (limit)", stage: "G2 exhausted: change selectivity",
-                action: (sel.kind === "ligand" ? "Change the ligand" : sel.text) + ", then start again with a scouting gradient.",
+                action: (n ? sel.text : "Change the ligand") + ", then start again with a scouting gradient" + (n ? ": " + n.bIni + "–" + n.bFin + " %B in " + n.tG + " min at " + n.F + " mL/min." : "."),
                 message: "tG is already at the " + specs.tGMax + " min limit and Rs is " + rs.toFixed(2) + " < " + specs.rsSpec + ". Keeping GS only buys efficiency (Rs grows with √N), so G2 has done what it can. A GS change (tG or F first, Δφ last) or a chemistry change is needed to improve the spacing.",
                 selectivity: sel, next: n,
             });
@@ -394,7 +420,7 @@ function decideGradient(run, history, specsIn) {
         // Best case Rs at constant GS: Rs grows as 1/sqrt(F) (lecturer's forum answer).
         const rsBest = rs * Math.sqrt(run.F / n.F);
         let fitted = null;
-        const g2Runs = series.filter(function (h) { return h.numPeaks === specs.targetPeaks && typeof h.minResolution === "number" && Math.abs((gradientSteepness(h.bIni, h.bFin, h.tG, h.F, gradientVm(h.columnDimensions) || Vm) || 0) / GS - 1) < 0.03; });
+        const g2Runs = series.filter(function (h) { return h.numPeaks === specs.targetPeaks && typeof h.minResolution === "number" && Math.abs((gradientSteepness(h.bIni, h.bFin, h.tG, h.F, gradientVmFor(h, specs) || Vm) || 0) / GS - 1) < 0.03; });
         if (g2Runs.length >= 2) {
             const a0 = g2Runs[0], a1 = g2Runs[g2Runs.length - 1];
             if (a0.F !== a1.F && a0.minResolution > 0 && a1.minResolution > 0) {
@@ -439,7 +465,8 @@ function decideGradient(run, history, specsIn) {
         // Already shrunk but still long: raise F by x and divide tG by x (GS kept), within BP and Rs limits.
         const need = (run.trLastPeak - specs.hold) / Math.max(specs.runTimeSpec - specs.hold, 0.1);
         const bpLim = typeof run.maxPressure === "number" && run.maxPressure > 0 ? specs.maxPressure / run.maxPressure : Infinity;
-        const rsLim = Math.pow(rs / specs.rsSpec, 2);
+        const rsTarget = specs.rsSpec + (Number(specs.g3RsMargin) > 0 ? Number(specs.g3RsMargin) : 0);
+        const rsLim = Math.pow(rs / rsTarget, 2);
         const x = Math.min(need, bpLim, rsLim);
         if (x > 1.02) {
             const n = next(run.bIni, run.bFin, run.tG / x, run.F * x);
@@ -448,7 +475,7 @@ function decideGradient(run, history, specsIn) {
             return Object.assign(out, {
                 caseId: "G3fast", caseLabel: "G3 (faster)", stage: "G3 Keep GS, faster",
                 action: "Keep GS, run faster: F × " + x.toFixed(2) + " and tG ÷ " + x.toFixed(2) + " → " + n.bIni + "–" + n.bFin + " %B in " + n.tG + " min at " + n.F + " mL/min.",
-                message: "The window is already shrunk but the last peak (" + run.trLastPeak.toFixed(2) + " min) is over the run-time spec of " + specs.runTimeSpec + " min. x is limited by back pressure (BP × x ≤ " + specs.maxPressure + " psi, x ≤ " + (bpLim === Infinity ? "n/a" : bpLim.toFixed(2)) + ") and by Rs (Rs ÷ √x ≥ " + specs.rsSpec + ", x ≤ " + rsLim.toFixed(2) + "). Predicted Rs " + n.predictedRs.toFixed(2) + (n.predictedBP ? ", BP about " + Math.round(n.predictedBP) + " psi." : "."),
+                message: "The window is already shrunk but the last peak (" + run.trLastPeak.toFixed(2) + " min) is over the run-time spec of " + specs.runTimeSpec + " min. x is limited by back pressure (BP × x ≤ " + specs.maxPressure + " psi, x ≤ " + (bpLim === Infinity ? "n/a" : bpLim.toFixed(2)) + ") and by Rs (Rs ÷ √x ≥ " + rsTarget.toFixed(2) + (rsTarget > specs.rsSpec ? ", the spec plus your safety margin" : "") + ", x ≤ " + rsLim.toFixed(2) + "). Predicted Rs " + n.predictedRs.toFixed(2) + (n.predictedBP ? ", BP about " + Math.round(n.predictedBP) + " psi." : "."),
                 next: n,
             });
         }
@@ -466,7 +493,7 @@ function decideGradient(run, history, specsIn) {
 }
 
 if (typeof window !== "undefined") {
-    window.hplcGradient = { fromFile: gradientConditionsFromFile, decide: decideGradient, parseName: parseGradientName, GS: gradientSteepness, Vm: gradientVm, defaults: GRADIENT_DEFAULTS, percentBAt: percentBAt, sort: sortGradientRuns };
+    window.hplcGradient = { fromFile: gradientConditionsFromFile, decide: decideGradient, parseName: parseGradientName, GS: gradientSteepness, Vm: gradientVm, VmFor: gradientVmFor, defaults: GRADIENT_DEFAULTS, percentBAt: percentBAt, sort: sortGradientRuns };
 }
 if (typeof module !== "undefined") {
     module.exports = { gradientConditionsFromFile, rampFromPoints, decideGradient, parseGradientName, gradientSteepness, gradientVm, GRADIENT_DEFAULTS, percentBAt, sortGradientRuns };

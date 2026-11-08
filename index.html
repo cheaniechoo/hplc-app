@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>HPLC method development assistant</title>
-  <link rel="stylesheet" href="style.css?v=20261108-2250">
+  <link rel="stylesheet" href="style.css?v=20261108-2345">
 </head>
 <body>
 
@@ -259,8 +259,10 @@
         </div>
       </div>
       <details class="spec-block spec-adv" id="g-adv">
-        <summary><span class="spec-icon adv" aria-hidden="true">&#9881;</span><span class="spec-adv-title">Advanced settings</span><span class="spec-pill">Optional &middot; defaults match the case table</span></summary>
-        <p class="hint">You don't need to change anything here to get the answer key. Change a value and every gradient run is decided again; your values are kept in this browser.</p>
+        <summary><span class="spec-icon adv" aria-hidden="true">&#9881;</span><span class="spec-adv-title">Advanced settings</span><span class="spec-pill">Optional &middot; defaults match the case table</span><span id="g-adv-changed-pill" class="spec-pill changed" hidden></span></summary>
+        <p class="hint">You don't need to change anything here to get the answer key. Change a value and every gradient run is decided again; your values are kept in this browser. Values you changed from the case table are marked in yellow, with the default beside them.</p>
+        <div id="g-adv-warn" class="adv-warn" role="alert" hidden></div>
+        <div id="g-adv-impact" class="adv-impact" role="status" hidden></div>
         <div class="adv-group adv-rules">
           <h4>Rule factors</h4>
           <div class="specs-grid wide">
@@ -269,30 +271,43 @@
           <div class="field"><label for="g-adv-g1up"><span class="case-tag up">G1 &uarr;</span> G1 &uarr; tG factor</label><input id="g-adv-g1up" type="number" min="0.1" step="0.05" value="0.5"></div>
           <div class="field"><label for="g-adv-g1down"><span class="case-tag down">G1 &darr;</span> G1 &darr; tG factor (from scouting)</label><input id="g-adv-g1down" type="number" min="1" step="0.05" value="1.2"></div>
           <div class="field"><label for="g-adv-g2"><span class="case-tag">G2</span> G2 F factor (tG divided by it)</label><input id="g-adv-g2" type="number" min="0.1" step="0.05" value="0.8"></div>
+          <div class="field"><label for="g-adv-wasted"><span class="case-tag">G3</span> Unused %B that counts as &ldquo;wasted&rdquo;</label><input id="g-adv-wasted" type="number" min="0" step="1" value="3"><p class="hint">G3 (shrink) is chosen over G4 when at least this much %B is unused at either end of the window.</p></div>
           <div class="field"><label for="g-adv-shrink-start"><span class="case-tag">G3</span> G3 margin before the first peak (%B)</label><input id="g-adv-shrink-start" type="number" min="0" step="1" value="20"></div>
           <div class="field"><label for="g-adv-shrink-end"><span class="case-tag">G3</span> G3 margin after the last peak (%B)</label><input id="g-adv-shrink-end" type="number" min="0" step="1" value="5"></div>
+          <div class="field"><label for="g-adv-g3margin"><span class="case-tag">G3 fast</span> Rs safety margin when speeding up</label><input id="g-adv-g3margin" type="number" min="0" step="0.05" value="0"><p class="hint">G3 (faster) raises F and cuts tG while Rs stays at the spec + this margin (0.1 = aim for 1.5 with a 1.4 spec).</p></div>
           <div class="field"><label class="g-check"><input id="g-adv-marker" type="checkbox" checked> The first peak is uracil (t0 marker), so G3 uses the second peak as the first compound</label></div>
           </div>
         </div>
         <div class="adv-group adv-ladder">
           <h4>Selectivity ladder (G1 &#x2715;)</h4>
-          <p class="hint">After G1 &uarr; and G1 &darr; fail: temperature through these steps (ambient first), then solvent (MeOH, then MIX), then ligand, each from a new scouting gradient.</p>
+          <p class="hint">After G1 &uarr; and G1 &darr; fail: temperature through these steps (ambient first), then the solvents in this order, then the ligands in this order, each from a new scouting gradient.</p>
           <div class="specs-grid wide">
           <div class="field"><label for="g-adv-tsteps">Temperature steps (&deg;C, comma separated)</label><input id="g-adv-tsteps" type="text" value="40, 60"></div>
-        <div class="field"><label for="g-adv-tmax">Maximum oven temperature (&deg;C)</label><input id="g-adv-tmax" type="number" min="25" step="5" value="60"></div>
+          <div class="field"><label for="g-adv-tmax">Maximum oven temperature (&deg;C)</label><input id="g-adv-tmax" type="number" min="25" step="5" value="60"></div>
+          <div class="field"><label for="g-adv-solvents">Solvent order (comma separated)</label><input id="g-adv-solvents" type="text" value="ACN, MeOH, MIX"><p class="hint">Use ACN, MeOH and MIX. The run's own solvent is skipped.</p></div>
+          <div class="field"><label for="g-adv-mix">MIX: ACN share of the organic part (%)</label><input id="g-adv-mix" type="number" min="0" max="100" step="5" value="50"></div>
+          <div class="field field-wide"><label for="g-adv-ligands">Ligands to try next, in order</label><input id="g-adv-ligands" type="text" value="" placeholder="e.g. PFP, BiPH (blank = just say &lsquo;change the ligand&rsquo;)"><div id="g-adv-ligand-chips" class="adv-chips" aria-label="Ligands in your column list"></div></div>
           </div>
         </div>
         <div class="adv-group adv-instr">
           <h4>Instrument and scouting gradient</h4>
           <div class="specs-grid wide">
           <div class="field"><label for="g-adv-dwell">Dwell volume (mL)</label><input id="g-adv-dwell" type="number" min="0" step="0.1" value="0"><p class="hint">Delay between the mixer and the column (dwell time = volume &divide; F), added to the hold when working out %B at elution. 0 = the workshop's calculation.</p></div>
-        <div class="field"><label for="g-adv-sc-bini">Scouting %B ini</label><input id="g-adv-sc-bini" type="number" min="0" max="100" step="1" value="5"></div>
-        <div class="field"><label for="g-adv-sc-bfin">Scouting %B fin</label><input id="g-adv-sc-bfin" type="number" min="0" max="100" step="1" value="100"></div>
-        <div class="field"><label for="g-adv-sc-tg">Scouting tG (min)</label><input id="g-adv-sc-tg" type="number" min="1" step="1" value="20"></div>
-        <div class="field"><label for="g-adv-sc-f">Scouting flow (mL/min)</label><input id="g-adv-sc-f" type="number" min="0.1" step="0.1" value="1.5"></div>
+          <div class="field"><label for="g-adv-vmsource">Column volume Vm for GS</label><select id="g-adv-vmsource"><option value="geometry" selected>From the column size &times; porosity (workshop)</option><option value="measured">Measured: F &times; t0 (uracil peak)</option></select></div>
+          <div class="field"><label for="g-adv-porosity">Porosity for the column-size Vm</label><input id="g-adv-porosity" type="number" min="0.3" max="0.95" step="0.01" value="0.68"></div>
+          <div class="field"><label for="g-adv-sc-bini">Scouting %B ini</label><input id="g-adv-sc-bini" type="number" min="0" max="100" step="1" value="5"></div>
+          <div class="field"><label for="g-adv-sc-bfin">Scouting %B fin</label><input id="g-adv-sc-bfin" type="number" min="0" max="100" step="1" value="100"></div>
+          <div class="field"><label for="g-adv-sc-tg">Scouting tG (min)</label><input id="g-adv-sc-tg" type="number" min="1" step="1" value="20"></div>
+          <div class="field"><label for="g-adv-sc-f">Scouting flow (mL/min)</label><input id="g-adv-sc-f" type="number" min="0.1" step="0.1" value="1.5"></div>
           </div>
+          <div id="g-adv-gs" class="adv-gs" aria-live="polite"></div>
         </div>
-        <p class="adv-actions"><button type="button" id="g-adv-reset" class="secondary">Reset to the case-table values</button> <span id="g-adv-status" class="adv-status" role="status"></span></p>
+        <div class="adv-actions">
+          <button type="button" id="g-adv-reset" class="secondary">Reset to the case-table values</button>
+          <button type="button" id="g-adv-export" class="secondary">Save settings to a file</button>
+          <label class="secondary button-like" for="g-adv-import">Load settings from a file</label><input id="g-adv-import" type="file" accept=".json,application/json" hidden>
+          <span id="g-adv-status" class="adv-status" role="status"></span>
+        </div>
       </details>
     </section>
 
@@ -646,22 +661,22 @@
     </section>
   </main>
 
-  <script src="equipment-data.js?v=20261108-2250"></script>
-  <script src="efficiency.js?v=20261108-2250"></script>
-  <script src="logic.js?v=20261108-2250"></script>
-  <script src="monash-columns.js?v=20261108-2250"></script>
-  <script src="user-columns.js?v=20261108-2250"></script>
-  <script src="module-howto.js?v=20261108-2250"></script>
-  <script src="chromatogram.js?v=20261108-2250"></script>
-  <script src="logk-chart.js?v=20261108-2250"></script>
-  <script src="gradient.js?v=20261108-2250"></script>
-  <script src="app.js?v=20261108-2250"></script>
-  <script src="gradient-app.js?v=20261108-2250"></script>
-  <script src="guide-figures.js?v=20261108-2250"></script>
-  <script src="flowchart.js?v=20261108-2250"></script>
-  <script src="ligand-structures.js?v=20261108-2250"></script>
-  <script src="equipment-interactive.js?v=20261108-2250"></script>
-  <script src="awesome-calc.js?v=20261108-2250"></script>
-  <script src="nav.js?v=20261108-2250"></script>
+  <script src="equipment-data.js?v=20261108-2345"></script>
+  <script src="efficiency.js?v=20261108-2345"></script>
+  <script src="logic.js?v=20261108-2345"></script>
+  <script src="monash-columns.js?v=20261108-2345"></script>
+  <script src="user-columns.js?v=20261108-2345"></script>
+  <script src="module-howto.js?v=20261108-2345"></script>
+  <script src="chromatogram.js?v=20261108-2345"></script>
+  <script src="logk-chart.js?v=20261108-2345"></script>
+  <script src="gradient.js?v=20261108-2345"></script>
+  <script src="app.js?v=20261108-2345"></script>
+  <script src="gradient-app.js?v=20261108-2345"></script>
+  <script src="guide-figures.js?v=20261108-2345"></script>
+  <script src="flowchart.js?v=20261108-2345"></script>
+  <script src="ligand-structures.js?v=20261108-2345"></script>
+  <script src="equipment-interactive.js?v=20261108-2345"></script>
+  <script src="awesome-calc.js?v=20261108-2345"></script>
+  <script src="nav.js?v=20261108-2345"></script>
 </body>
 </html>
