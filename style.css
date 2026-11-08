@@ -1282,3 +1282,42 @@ button.danger-outline:hover:not(:disabled) { background: var(--error); color: #f
 .eff-tile-btn { margin-top: auto; align-self: flex-start; }
 .eff-tile .eff-changes { margin-bottom: .6rem; }
 .eff-next-badge { display: inline-block; margin-left: .35rem; font-size: .7rem; font-weight: 700; padding: .05rem .45rem; border-radius: 999px; background: #2f7d4f; color: #fff; }
+
+/* ---- Efficiency decision headline: flow chart action + next run + most optimal ---- */
+.card-action.eff-action { font-size: 1rem; font-weight: 400; }
+.eff-hl { display: flex; flex-direction: column; gap: .45rem; }
+.eff-hl-table { margin: 0 0 .1rem; font-size: 1.15rem; font-weight: 700; color: var(--accent-dark); }
+.eff-hl-k { display: inline-block; font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: #fff; background: var(--accent-dark); padding: .12rem .5rem; border-radius: .35rem; vertical-align: .15em; margin-right: .3rem; }
+.eff-hl-row { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-left: 5px solid #2f7d4f; border-radius: .5rem; padding: .5rem .75rem; }
+.eff-hl-row.k-opt { border-left-color: #c4881c; }
+.eff-hl-row.k-both { border-left-color: #7a4f9a; }
+.eff-hl-row.hl-inuse { box-shadow: 0 0 0 1px var(--accent); }
+.eff-hl-tag { flex: none; min-width: 7.5rem; font-size: .75rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: #2f7d4f; }
+.eff-hl-row.k-opt .eff-hl-tag { color: #9a6a12; }
+.eff-hl-row.k-both .eff-hl-tag { color: #7a4f9a; }
+.eff-hl-body { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .7rem; flex: 1 1 14rem; }
+.eff-hl-body strong { font-size: 1.02rem; color: var(--ink); }
+.eff-hl-flow { font-weight: 700; color: var(--accent-dark); background: var(--cat-chemical-bg); padding: .05rem .5rem; border-radius: 999px; font-size: .9rem; }
+.eff-hl-pred { font-size: .85rem; color: #55636b; }
+.eff-hl-use { margin-left: auto; font-size: .74rem; font-weight: 700; color: #fff; background: var(--accent); padding: .12rem .55rem; border-radius: 999px; }
+.eff-hl.compact { margin: .4rem 0 .6rem; gap: .35rem; }
+.eff-hl.compact .eff-hl-table { font-size: .95rem; }
+.eff-hl.compact .eff-hl-row { padding: .4rem .55rem; gap: .2rem; flex-direction: column; align-items: flex-start; }
+.eff-hl.compact .eff-hl-tag { min-width: 0; font-size: .7rem; }
+.eff-hl.compact .eff-hl-body strong { font-size: .92rem; }
+.eff-hl.compact .eff-hl-use { margin-left: 0; }
+.eff-why-list, .eff-why-how { margin: .4rem 0 .7rem; padding-left: 1.1rem; }
+.eff-why-list li, .eff-why-how li { margin: .2rem 0; }
+.eff-why-how { font-size: .9rem; color: #44525a; }
+.eff-why-table { border-collapse: collapse; width: 100%; font-size: .9rem; margin: .3rem 0 .4rem; }
+.eff-why-table th, .eff-why-table td { padding: .35rem .55rem; border-bottom: 1px solid var(--line); text-align: left; }
+.eff-why-table th { font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; color: #55636b; }
+.eff-why-table .eff-why-lbl { font-weight: 700; white-space: nowrap; }
+.eff-why-table tr.k-next .eff-why-lbl { color: #2f7d4f; }
+.eff-why-table tr.k-opt .eff-why-lbl { color: #9a6a12; }
+.eff-why-table tr.k-both .eff-why-lbl { color: #7a4f9a; }
+.eff-why-table tr.k-spec td { color: #55636b; font-style: italic; border-bottom: 0; }
+.eff-why-table tr.k-now td { background: #f6f8f9; }
+.eff-goodval { color: #2f7d4f; font-weight: 700; }
+.eff-hl.compact .eff-hl-body { flex: none; }
+.eff-why-table td { white-space: nowrap; } .eff-why-table td:nth-child(2) { white-space: normal; }

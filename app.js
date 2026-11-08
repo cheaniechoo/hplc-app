@@ -2159,6 +2159,100 @@ function buildRetentionAltBlock(outcome) {
   return wrap;
 }
 
+// The efficiency decision split into parts: the flow chart's action, the next run and the most optimal option.
+function effSuggestions(outcome) {
+  const eff = outcome && outcome.efficiency;
+  if (!eff || eff.met || eff.selectivity || !eff.best) return null;
+  const inUse = chosenEfficiencyOption(outcome, currentRunFileName) || eff.best;
+  const items = [];
+  if (!eff.next || eff.nextIsBest) items.push({ kind: "both", label: "Next run · most optimal", o: eff.best });
+  else {
+    items.push({ kind: "next", label: "Next run", o: eff.next });
+    items.push({ kind: "opt", label: "Most optimal", o: eff.best });
+  }
+  items.forEach(function (it) { it.inUse = effOptionKey(it.o) === effOptionKey(inUse); });
+  return { eff: eff, table: eff.tableAction.replace(/\.$/, ""), items: items };
+}
+function effColumnWords(o) {
+  return (o.current ? "Current column" : o.description.replace(/ core-shell$/, "") + (o.column.spp > 1 ? " (core-shell)" : "")) + (o.inLab ? "" : " – to order");
+}
+// Compact block used as the headline of the result card and in the Current run panel.
+function buildEffHeadline(sg, compact) {
+  const box = document.createElement("div");
+  box.className = "eff-hl" + (compact ? " compact" : "");
+  const t = document.createElement("p");
+  t.className = "eff-hl-table";
+  t.innerHTML = '<span class="eff-hl-k">Flow chart</span> ';
+  t.appendChild(document.createTextNode(sg.table));
+  box.appendChild(t);
+  sg.items.forEach(function (it) {
+    const row = document.createElement("div");
+    row.className = "eff-hl-row k-" + it.kind + (it.inUse ? " hl-inuse" : "");
+    const tag = document.createElement("span"); tag.className = "eff-hl-tag"; tag.textContent = it.label; row.appendChild(tag);
+    const body = document.createElement("span"); body.className = "eff-hl-body";
+    const col = document.createElement("strong"); col.textContent = effColumnWords(it.o); body.appendChild(col);
+    const f = document.createElement("span"); f.className = "eff-hl-flow"; f.textContent = it.o.F.toFixed(2) + " mL/min"; body.appendChild(f);
+    if (!compact) {
+      const pr = document.createElement("span"); pr.className = "eff-hl-pred";
+      pr.textContent = "Rs " + it.o.Rs.toFixed(2) + " · tR " + it.o.tR.toFixed(1) + " min · BP " + (it.o.BP === null ? "?" : Math.round(it.o.BP)) + " psi";
+      body.appendChild(pr);
+    }
+    row.appendChild(body);
+    if (it.inUse && sg.items.length > 1) { const u = document.createElement("span"); u.className = "eff-hl-use"; u.textContent = "✓ in use"; row.appendChild(u); }
+    box.appendChild(row);
+  });
+  return box;
+}
+// "Why, and details" for an efficiency decision: a short list and a comparison table instead of a paragraph.
+function buildEffWhy(sg, outcome, specs) {
+  const wrap = document.createElement("div");
+  wrap.className = "eff-why";
+  const eff = sg.eff;
+  const facts = document.createElement("ul");
+  facts.className = "eff-why-list";
+  const li = function (k, v) { const l = document.createElement("li"); const b = document.createElement("strong"); b.textContent = k + ": "; l.appendChild(b); l.appendChild(document.createTextNode(v)); facts.appendChild(l); };
+  li("Case " + eff.caseNumber + " of 9", eff.caseLabel);
+  li("Flow chart says", sg.table);
+  wrap.appendChild(facts);
+  const table = document.createElement("table");
+  table.className = "eff-why-table";
+  const h = table.createTHead().insertRow();
+  ["", "Column", "F (mL/min)", "tR (min)", "BP (psi)", "Rs"].forEach(function (x) { const th = document.createElement("th"); th.textContent = x; h.appendChild(th); });
+  const body = table.createTBody();
+  const sp = specs || {};
+  const row = function (label, cls, col, F, tR, BP, Rs) {
+    const r = body.insertRow(); r.className = cls;
+    [label, col, F, tR, BP, Rs].forEach(function (v, i) { const c = r.insertCell(); c.textContent = v; if (i === 0) c.className = "eff-why-lbl"; });
+    return r;
+  };
+  const ref = outcome.efficiencyRef;
+  if (ref) {
+    const r = row("This run", "k-now", "Current column", ref.F.toFixed(2), typeof ref.tR === "number" ? ref.tR.toFixed(1) : "", typeof ref.BP === "number" ? String(Math.round(ref.BP)) : "", ref.Rs.toFixed(2));
+    if (Number.isFinite(sp.rsSpec) && ref.Rs < sp.rsSpec) r.cells[5].classList.add("eff-badval");
+  }
+  sg.items.forEach(function (it) {
+    const o = it.o;
+    const r = row(it.label, "k-" + it.kind, effColumnWords(o), o.F.toFixed(2), o.tR.toFixed(1), o.BP === null ? "?" : String(Math.round(o.BP)), o.Rs.toFixed(2));
+    if (!o.tROk) r.cells[3].classList.add("eff-badval");
+    if (o.bpOk === false) r.cells[4].classList.add("eff-badval");
+    r.cells[5].classList.add(o.rsOk ? "eff-goodval" : "eff-badval");
+  });
+  if (Number.isFinite(sp.rsSpec)) row("Spec", "k-spec", "", "", "≤ " + sp.tRSpec, "≤ " + sp.maxPressure, "≥ " + sp.rsSpec);
+  const scroll = document.createElement("div"); scroll.className = "table-scroll"; scroll.appendChild(table);
+  wrap.appendChild(scroll);
+  const how = document.createElement("ul");
+  how.className = "eff-why-how";
+  [["Next run", "the smallest step the flow chart allows (only the changes the table names), that still meets the specs."],
+   ["Most optimal", "the column and flow with the highest Rs that keep tR and back pressure in spec, from every column in your list."]].forEach(function (x) {
+    const l = document.createElement("li"); const b = document.createElement("strong"); b.textContent = x[0] + " = "; l.appendChild(b); l.appendChild(document.createTextNode(x[1])); how.appendChild(l);
+  });
+  wrap.appendChild(how);
+  if (!eff.reachesSpec) { const p = document.createElement("p"); p.className = "eff-none"; p.textContent = "No column in your list reaches the Rs spec within the tR and BP limits; the most optimal option is the closest."; wrap.appendChild(p); }
+  const n = document.createElement("p"); n.className = "note"; n.textContent = "The full comparison, with every column ranked, is in the Efficiency card below.";
+  wrap.appendChild(n);
+  return wrap;
+}
+
 function buildResultCard(outcome) {
   const card = document.createElement("div");
   card.className = "result-card" + (outcome.pass ? " pass" : "") + (outcome.unsafe ? " unsafe" : "");
@@ -2167,7 +2261,13 @@ function buildResultCard(outcome) {
   heading.textContent = outcome.stage;
   card.appendChild(heading);
 
-  if (outcome.action) {
+  const effSg = effSuggestions(outcome);
+  if (effSg) {
+    const actionBlock = document.createElement("div");
+    actionBlock.className = "card-action eff-action";
+    actionBlock.appendChild(buildEffHeadline(effSg, false));
+    card.appendChild(actionBlock);
+  } else if (outcome.action) {
     const actionBlock = document.createElement("p");
     actionBlock.className = "card-action";
     actionBlock.textContent = retentionAltActive(outcome) ? retentionAltAction(outcome) : outcome.action;
@@ -2185,9 +2285,12 @@ function buildResultCard(outcome) {
   moreSum.textContent = "Why, and details";
   more.appendChild(moreSum);
 
-  const message = document.createElement("p");
-  message.textContent = outcome.message;
-  more.appendChild(message);
+  if (effSg) more.appendChild(buildEffWhy(effSg, outcome, (function () { try { return readSpecs(); } catch (e) { return null; } })()));
+  else {
+    const message = document.createElement("p");
+    message.textContent = outcome.message;
+    more.appendChild(message);
+  }
 
   // If the specification has changed since the last calculation, show that
   // before the rest of the reasoning, so the user notices it.
@@ -2307,7 +2410,10 @@ function buildResultCard(outcome) {
     more.appendChild(note);
   }
 
-  const whereBlock = buildWhereToChangeBlock(outcome.message);
+  const whereText = effSg ? effSg.items.map(function (it) {
+    return it.o.changes.join(" ").replace(/\bF\b/g, "flow rate").replace(/\bL\b/g, "column length").replace(/\bPS\b/g, "particle size").replace(/\bID\b/g, "internal diameter");
+  }).join(" ") : outcome.message;
+  const whereBlock = buildWhereToChangeBlock(whereText);
   if (whereBlock) more.appendChild(whereBlock);
   card.appendChild(more);
 
@@ -3135,7 +3241,9 @@ function renderRunSummary() {
     const st = document.createElement("strong");
     st.textContent = summaryOutcome.stage;
     dec.appendChild(st);
-    if (summaryOutcome.action) {
+    const sumSg = effSuggestions(summaryOutcome);
+    if (sumSg) dec.appendChild(buildEffHeadline(sumSg, true));
+    else if (summaryOutcome.action) {
       const ac = document.createElement("p");
       ac.textContent = retentionAltActive(summaryOutcome) ? retentionAltAction(summaryOutcome) : summaryOutcome.action;
       dec.appendChild(ac);
